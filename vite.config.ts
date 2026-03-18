@@ -1,7 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { copyFileSync, mkdirSync, existsSync, cpSync } from 'fs';
+
+// ESM 中获取 __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // 自定义插件：构建后复制必要文件
 function copyManifestPlugin() {
@@ -43,7 +48,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
-    minify: 'terser',
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'popup.html'),
@@ -53,7 +57,6 @@ export default defineConfig({
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          // background 和 content 脚本需要固定名称
           if (chunkInfo.name === 'background' || chunkInfo.name === 'content') {
             return '[name].js';
           }
