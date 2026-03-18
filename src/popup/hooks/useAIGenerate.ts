@@ -99,15 +99,6 @@ export function useAIGenerate(): UseAIGenerateReturn {
       
       const config = configResponse.data;
       
-      // 检查 API Key
-      const hasApiKey = config.api.provider === 'deepseek'
-        ? !!config.api.deepseekApiKey
-        : !!config.api.openaiApiKey;
-      
-      if (!hasApiKey) {
-        throw new Error('请先在设置中配置 API Key');
-      }
-      
       // 检查项目信息
       if (!config.project.targetUrl) {
         throw new Error('请先在设置中配置推广网址');
@@ -138,7 +129,7 @@ export function useAIGenerate(): UseAIGenerateReturn {
       setMessage(errorMessage);
       
       // 如果是配置问题，引导用户去设置
-      if (errorMessage.includes('API Key') || errorMessage.includes('推广网址')) {
+      if (errorMessage.includes('推广网址')) {
         setMessage(errorMessage + ' (点击右上角设置)');
       }
     }

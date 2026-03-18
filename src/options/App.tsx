@@ -1,12 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { APIConfig, ProjectInfo, AIProvider } from '../shared/types';
-
-// 默认配置
-const DEFAULT_API_CONFIG: APIConfig = {
-  provider: 'deepseek',
-  deepseekApiKey: '',
-  openaiApiKey: '',
-};
+import type { ProjectInfo } from '../shared/types';
 
 const DEFAULT_PROJECT_INFO: ProjectInfo = {
   targetUrl: '',
@@ -17,22 +10,16 @@ const DEFAULT_PROJECT_INFO: ProjectInfo = {
 };
 
 function App() {
-  // API 配置状态
-  const [apiConfig, setApiConfig] = useState<APIConfig>(DEFAULT_API_CONFIG);
-  // 项目信息状态
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>(DEFAULT_PROJECT_INFO);
-  // UI 状态
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
-  // 加载配置
   useEffect(() => {
     loadConfig();
   }, []);
   
-  // Toast 自动消失
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3000);
@@ -44,7 +31,6 @@ function App() {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
       if (response.success && response.data) {
-        setApiConfig(response.data.api);
         setProjectInfo(response.data.project);
       }
     } catch (error) {
@@ -58,28 +44,6 @@ function App() {
     setToast({ type, message });
   };
   
-  // 保存 API 配置
-  const handleSaveAPIConfig = useCallback(async () => {
-    setSaving(true);
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'SAVE_API_CONFIG',
-        payload: apiConfig,
-      });
-      
-      if (response.success) {
-        showToast('success', 'API 配置已保存');
-      } else {
-        showToast('error', response.error || '保存失败');
-      }
-    } catch (error) {
-      showToast('error', '保存失败');
-    } finally {
-      setSaving(false);
-    }
-  }, [apiConfig]);
-  
-  // 保存项目信息
   const handleSaveProjectInfo = useCallback(async () => {
     setSaving(true);
     try {
@@ -100,30 +64,13 @@ function App() {
     }
   }, [projectInfo]);
   
-  // 测试 API 连接
   const handleTestAPI = useCallback(async () => {
-    const apiKey = apiConfig.provider === 'deepseek'
-      ? apiConfig.deepseekApiKey
-      : apiConfig.openaiApiKey;
-    
-    if (!apiKey) {
-      showToast('error', '请先输入 API Key');
-      return;
-    }
-    
     setTesting(true);
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'TEST_API',
-        payload: {
-          provider: apiConfig.provider,
-          apiKey,
-          customEndpoint: apiConfig.customEndpoint,
-        },
-      });
+      const response = await chrome.runtime.sendMessage({ type: 'TEST_API' });
       
       if (response.success) {
-        showToast('success', 'API 连接成功');
+        showToast('success', 'Azure OpenAI 连接成功');
       } else {
         showToast('error', response.message || '连接失败');
       }
@@ -132,7 +79,7 @@ function App() {
     } finally {
       setTesting(false);
     }
-  }, [apiConfig]);
+  }, []);
   
   if (loading) {
     return (
@@ -148,86 +95,23 @@ function App() {
   return (
     <div className="options-container">
       <h1 className="page-title">AI 外链助手设置</h1>
-      <p className="page-subtitle">配置 API 和推广项目信息，设置完成后即可使用</p>
+      <p className="page-subtitle">配置推广项目信息</p>
       
-      {/* API 设置卡片 */}
+      {/* API 状态卡片 */}
       <div className="settings-card">
         <h2 className="settings-card-title">
-          <span>API 设置</span>
+          <span>API 状态</span>
         </h2>
-        
-        <div className="form-group">
-          <label className="form-label">AI 服务商</label>
-          <select
-            className="form-select"
-            value={apiConfig.provider}
-            onChange={(e) => setApiConfig({ ...apiConfig, provider: e.target.value as AIProvider })}
-          >
-            <option value="deepseek">DeepSeek（推荐，性价比高）</option>
-            <option value="openai">OpenAI（需要科学上网）</option>
-          </select>
-        </div>
-        
-        {apiConfig.provider === 'deepseek' ? (
-          <div className="form-group">
-            <label className="form-label">
-              DeepSeek API Key
-              <span className="form-label-hint"> - 从 platform.deepseek.com 获取</span>
-            </label>
-            <input
-              type="password"
-              className="form-input"
-              value={apiConfig.deepseekApiKey}
-              onChange={(e) => setApiConfig({ ...apiConfig, deepseekApiKey: e.target.value })}
-              placeholder="sk-..."
-            />
-          </div>
-        ) : (
-          <div className="form-group">
-            <label className="form-label">
-              OpenAI API Key
-              <span className="form-label-hint"> - 从 platform.openai.com 获取</span>
-            </label>
-            <input
-              type="password"
-              className="form-input"
-              value={apiConfig.openaiApiKey}
-              onChange={(e) => setApiConfig({ ...apiConfig, openaiApiKey: e.target.value })}
-              placeholder="sk-..."
-            />
-          </div>
-        )}
-        
-        <div className="form-group">
-          <label className="form-label">
-            自定义 API 端点
-            <span className="form-label-hint"> - 可选，用于代理或自建服务</span>
-          </label>
-          <input
-            type="url"
-            className="form-input"
-            value={apiConfig.customEndpoint || ''}
-            onChange={(e) => setApiConfig({ ...apiConfig, customEndpoint: e.target.value || undefined })}
-            placeholder="https://your-proxy.com/v1/chat/completions"
-          />
-        </div>
-        
-        <div className="action-bar">
-          <button
-            className="btn btn-secondary"
-            onClick={handleTestAPI}
-            disabled={testing}
-          >
-            {testing ? '测试中...' : '测试连接'}
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleSaveAPIConfig}
-            disabled={saving}
-          >
-            {saving ? '保存中...' : '保存 API 设置'}
-          </button>
-        </div>
+        <p style={{ marginBottom: '16px', color: '#6b7280' }}>
+          已配置 Azure OpenAI (gpt-4.1)
+        </p>
+        <button
+          className="btn btn-secondary"
+          onClick={handleTestAPI}
+          disabled={testing}
+        >
+          {testing ? '测试中...' : '测试连接'}
+        </button>
       </div>
       
       {/* 项目信息卡片 */}
@@ -323,7 +207,7 @@ function App() {
       <div className="settings-card" style={{ background: '#f9fafb' }}>
         <h2 className="settings-card-title">使用说明</h2>
         <ol style={{ paddingLeft: '20px', lineHeight: '1.8' }}>
-          <li>填写上方的 API Key 和项目信息</li>
+          <li>填写上方的项目信息</li>
           <li>打开目标外链页面（博客评论区或导航站提交页）</li>
           <li>点击浏览器右上角的插件图标</li>
           <li>选择模式：评论模式或导航站模式</li>

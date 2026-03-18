@@ -4,8 +4,8 @@
 // ========================================
 
 import { scrapePageContent, waitForContent } from './scraper';
-import { fillForm, detectForms } from './form-filler';
-import type { Message, ScrapeResultMessage, FillResultMessage } from '../shared/messages';
+import { fillForm, detectForms, scrollToForm } from './form-filler';
+import type { Message } from '../shared/messages';
 
 console.log('[AI外链助手] Content Script 已注入');
 
@@ -16,12 +16,9 @@ console.log('[AI外链助手] Content Script 已注入');
 chrome.runtime.onMessage.addListener((
   message: Message,
   _sender,
-  sendResponse: (response: ScrapeResultMessage['payload'] | FillResultMessage['payload']) => void
+  sendResponse
 ) => {
-  // 处理消息
   handleMessage(message, sendResponse);
-  
-  // 返回 true 表示异步响应
   return true;
 });
 
@@ -40,6 +37,11 @@ async function handleMessage(
     case 'FILL_FORM':
       await handleFillForm(message.payload, sendResponse);
       break;
+
+    case 'SCROLL_TO_FORM':
+      const result = scrollToForm();
+      sendResponse(result);
+      break;
       
     default:
       console.warn('[AI外链助手] 未知消息类型:', message);
@@ -50,15 +52,12 @@ async function handleMessage(
  * 处理页面抓取请求
  */
 async function handleScrapePage(
-  sendResponse: (response: ScrapeResultMessage['payload']) => void
+  sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
     console.log('[AI外链助手] 开始抓取页面内容...');
     
-    // 等待页面内容加载（针对 SPA）
     await waitForContent(2000);
-    
-    // 抓取内容
     const content = scrapePageContent();
     
     console.log('[AI外链助手] 抓取完成:', {
@@ -86,7 +85,7 @@ async function handleScrapePage(
  */
 async function handleFillForm(
   data: Parameters<typeof fillForm>[0],
-  sendResponse: (response: FillResultMessage['payload']) => void
+  sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
     console.log('[AI外链助手] 开始填充表单...');
@@ -113,7 +112,6 @@ async function handleFillForm(
 // 页面加载时自动检测表单
 // ========================================
 
-// 延迟检测，等待页面完全加载
 setTimeout(() => {
   const detection = detectForms();
   if (detection.hasForm) {

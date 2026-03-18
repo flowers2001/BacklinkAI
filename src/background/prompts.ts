@@ -5,6 +5,44 @@
 import type { ScrapedContent, ProjectInfo, WorkMode } from '../shared/types';
 
 /**
+ * 检测页面语言
+ */
+function detectLanguage(pageContent: ScrapedContent): string {
+  const text = (pageContent.title + ' ' + pageContent.bodyText.slice(0, 500)).toLowerCase();
+  
+  // 中文
+  if (/[\u4e00-\u9fa5]/.test(text)) return 'zh';
+  // 日文
+  if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja';
+  // 韩文
+  if (/[\uac00-\ud7af]/.test(text)) return 'ko';
+  // 俄文
+  if (/[\u0400-\u04ff]/.test(text)) return 'ru';
+  // 德文特征词
+  if (/\b(und|der|die|das|ist|für|mit)\b/.test(text)) return 'de';
+  // 法文特征词
+  if (/\b(le|la|les|est|pour|avec|dans)\b/.test(text)) return 'fr';
+  // 西班牙文特征词
+  if (/\b(el|la|los|las|es|para|con)\b/.test(text)) return 'es';
+  // 默认英文
+  return 'en';
+}
+
+/**
+ * 语言名称映射
+ */
+const LANGUAGE_NAMES: Record<string, string> = {
+  'zh': '中文',
+  'en': '英文',
+  'ja': '日文',
+  'ko': '韩文',
+  'de': '德文',
+  'fr': '法文',
+  'es': '西班牙文',
+  'ru': '俄文',
+};
+
+/**
  * 构建 AI Prompt
  */
 export function buildPrompt(
@@ -12,109 +50,111 @@ export function buildPrompt(
   pageContent: ScrapedContent,
   projectInfo: ProjectInfo
 ): string {
+  const pageLang = detectLanguage(pageContent);
+  const langName = LANGUAGE_NAMES[pageLang] || '英文';
+  
   switch (mode) {
     case 'comment':
-      return buildCommentPrompt(pageContent, projectInfo);
+      return buildCommentPrompt(pageContent, projectInfo, pageLang, langName);
     case 'directory':
-      return buildDirectoryPrompt(projectInfo);
+      return buildDirectoryPrompt(projectInfo, pageLang, langName);
     default:
       throw new Error(`未知模式: ${mode}`);
   }
 }
 
 /**
- * 构建博客评论 Prompt
+ * 博客评论 Prompt
  */
 function buildCommentPrompt(
   pageContent: ScrapedContent,
-  projectInfo: ProjectInfo
+  projectInfo: ProjectInfo,
+  pageLang: string,
+  langName: string
 ): string {
-  // 提取关键信息
   const title = pageContent.title || '无标题';
-  const description = pageContent.metaDescription || '';
   const mainHeading = pageContent.h1[0] || pageContent.h2[0] || '';
   const bodyPreview = pageContent.bodyText.slice(0, 500);
-  
-  // 检测语言（简单判断）
-  const isChinesePage = /[\u4e00-\u9fa5]/.test(pageContent.title + pageContent.bodyText.slice(0, 200));
-  const languageHint = isChinesePage ? '请用中文回复。' : 'Please respond in English.';
-  
-  return `你是一个热情的博客读者，刚刚阅读完一篇文章，想要留下一条有价值的评论。
+  const isChinese = pageLang === 'zh';
+
+  return `你是一个热情的博客读者，需要为一篇${langName}文章写评论。
 
 ## 文章信息
 - 标题：${title}
 ${mainHeading ? `- 主标题：${mainHeading}` : ''}
-${description ? `- 摘要：${description}` : ''}
 - 内容预览：${bodyPreview}...
+- 文章语言：${langName}
 
 ## 你的背景
-- 你关注${projectInfo.keywords}相关领域
-- 你运营一个网站：${projectInfo.targetUrl}
+- 你关注 ${projectInfo.keywords || '相关'} 领域
+- 你的网站：${projectInfo.targetUrl}
 
 ## 任务
-请写一条博客评论，要求：
+请生成两个版本的评论，用 JSON 格式返回：
+
+{
+  "original": "用${langName}写的评论（匹配文章语言）",
+  "chinese": "中文版本的评论"
+}
+
+## 评论要求
 1. 字数：50-100字
-2. 语气自然真诚，像一个真正阅读过文章的读者
-3. 可以选择以下任意一种风格：
-   - 赞同作者观点并补充自己的见解
-   - 分享相关的个人经验
-   - 提出一个有深度的问题
-4. 在适当的位置自然地提及你的网站（${projectInfo.targetUrl}）和你关注的领域（${projectInfo.keywords}）
-5. 不要显得像广告或垃圾评论
-6. 不要使用"很棒"、"好文章"等空洞的表述
+2. 语气自然真诚，像真正阅读过文章的读者
+3. 可以赞同观点、分享经验或提出问题
+4. 适当提及你的网站（${projectInfo.targetUrl}）
+5. 不要像广告或垃圾评论
+6. original 必须用${langName}写，要符合该语言的表达习惯
+${isChinese ? '7. 如果文章是中文，original 和 chinese 内容相同即可' : ''}
 
-${languageHint}
-
-请直接输出评论内容，不要有任何前缀或解释。`;
+请只返回 JSON，不要有其他内容。`;
 }
 
 /**
- * 构建导航站描述 Prompt
+ * 导航站描述 Prompt
  */
-function buildDirectoryPrompt(projectInfo: ProjectInfo): string {
-  return `你是一名专业的 SEO 文案撰写专家，需要为一个网站撰写提交到导航站的描述。
+function buildDirectoryPrompt(
+  projectInfo: ProjectInfo,
+  pageLang: string,
+  langName: string
+): string {
+  const isChinese = pageLang === 'zh';
+
+  return `你是 SEO 文案专家，需要为网站撰写导航站提交描述。
 
 ## 网站信息
-- 网站名称：${projectInfo.brandName || '待填写'}
-- 网站地址：${projectInfo.targetUrl}
-- 核心业务/关键词：${projectInfo.keywords}
+- 名称：${projectInfo.brandName || '待填写'}
+- 网址：${projectInfo.targetUrl}
+- 关键词：${projectInfo.keywords}
+- 目标导航站语言：${langName}
 
 ## 任务
-请撰写一段专业的网站描述，用于提交到各类导航站/网站目录。
+请生成两个版本的网站描述，用 JSON 格式返回：
 
-## 要求
+{
+  "original": "用${langName}写的网站描述（匹配导航站语言）",
+  "chinese": "中文版本的网站描述"
+}
+
+## 描述要求
 1. 字数：200-300字
-2. 风格专业正式，具有说服力
-3. 包含以下要素：
-   - 网站名称和核心定位
-   - 主要产品/服务/内容
-   - 独特优势或差异化卖点
-   - 目标用户群体
-   - 品牌价值主张
-4. SEO 友好：自然融入关键词（${projectInfo.keywords}）
-5. 不要使用夸大或虚假宣传的措辞
-6. 不要使用第一人称（我们、我）
-7. 段落清晰，便于阅读
+2. 专业正式，有说服力
+3. 包含核心业务、优势、目标用户
+4. SEO 友好，自然融入关键词
+5. 不要夸大宣传
+6. original 必须用${langName}写，符合该语言的表达习惯
+${isChinese ? '7. 如果是中文导航站，original 和 chinese 内容相同即可' : ''}
 
-请直接输出网站描述，不要有任何前缀或解释。`;
+请只返回 JSON，不要有其他内容。`;
 }
 
 /**
- * 构建系统提示（System Prompt）
+ * 系统提示
  */
 export function getSystemPrompt(): string {
-  return `你是一个专业的内容创作助手，专注于帮助用户创作高质量的 SEO 相关内容。
+  return `你是专业的多语言内容创作助手。你能够：
+1. 准确识别目标语言并用该语言写作
+2. 写出符合当地语言习惯的自然内容
+3. 同时提供中文版本便于用户理解
 
-核心原则：
-1. 内容真实自然，不像 AI 生成
-2. 符合人类的写作习惯和语气
-3. 避免过度使用形容词和夸张表达
-4. 关注读者价值，不纯粹为 SEO 而写
-5. 遵守平台规则，不生成垃圾内容
-
-输出规范：
-- 直接输出最终内容
-- 不要添加标题、前缀或解释
-- 不要使用 Markdown 格式（除非明确要求）
-- 保持指定的字数范围`;
+请严格按要求返回 JSON 格式，不要添加任何解释或 markdown 标记。`;
 }

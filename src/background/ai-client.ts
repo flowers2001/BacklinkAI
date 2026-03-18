@@ -1,119 +1,110 @@
 // ========================================
 // AI API 客户端
-// 支持 DeepSeek 和 OpenAI
+// 使用 Azure OpenAI
 // ========================================
 
-import type { AIProvider, ScrapedContent, ProjectInfo, WorkMode, GenerateResult } from '../shared/types';
-import { getAPIConfig, getProjectInfo } from '../shared/storage';
+import type { ScrapedContent, WorkMode } from '../shared/types';
+import { getProjectInfo } from '../shared/storage';
 import { buildPrompt, getSystemPrompt } from './prompts';
 
-/** API 端点配置 */
-const API_ENDPOINTS: Record<AIProvider, string> = {
-  deepseek: 'https://api.deepseek.com/v1/chat/completions',
-  openai: 'https://api.openai.com/v1/chat/completions',
+// ========================================
+// Azure OpenAI 配置
+// ========================================
+const AZURE_CONFIG = {
+  endpoint: 'https://openai-baibei.openai.azure.com',
+  deployment: 'gpt-4.1',
+  apiKey: 'cd21199a32a8440c9bce461b7de7446b',
+  apiVersion: '2024-12-01-preview',
 };
 
-/** 默认模型配置 */
-const DEFAULT_MODELS: Record<AIProvider, string> = {
-  deepseek: 'deepseek-chat',
-  openai: 'gpt-4o-mini',
-};
-
-/** API 请求超时（毫秒） */
 const API_TIMEOUT = 30000;
 
+export interface DualContentResult {
+  success: boolean;
+  original?: string;
+  chinese?: string;
+  error?: string;
+}
+
 /**
- * 调用 AI API 生成内容
+ * 生成内容（同时生成原文和中文版本）
  */
 export async function generateContent(
   mode: WorkMode,
   pageContent: ScrapedContent
-): Promise<GenerateResult> {
+): Promise<DualContentResult> {
   try {
-    // 获取配置
-    const apiConfig = await getAPIConfig();
     const projectInfo = await getProjectInfo();
     
-    // 验证 API Key
-    const apiKey = apiConfig.provider === 'deepseek'
-      ? apiConfig.deepseekApiKey
-      : apiConfig.openaiApiKey;
-    
-    if (!apiKey) {
-      return {
-        success: false,
-        error: `请先配置 ${apiConfig.provider === 'deepseek' ? 'DeepSeek' : 'OpenAI'} API Key`,
-      };
-    }
-    
-    // 验证项目信息
     if (!projectInfo.targetUrl) {
-      return {
-        success: false,
-        error: '请先配置推广网址',
-      };
+      return { success: false, error: '请先配置推广网址' };
     }
     
-    // 构建 Prompt
     const userPrompt = buildPrompt(mode, pageContent, projectInfo);
     const systemPrompt = getSystemPrompt();
+    const response = await callAzureOpenAI(systemPrompt, userPrompt);
     
-    // 调用 API
-    const content = await callAPI(
-      apiConfig.provider,
-      apiKey,
-      systemPrompt,
-      userPrompt,
-      apiConfig.customEndpoint
-    );
-    
-    return {
-      success: true,
-      content,
-    };
+    // 解析 JSON 响应
+    try {
+      // 清理可能的 markdown 代码块标记
+      let cleanResponse = response.trim();
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.slice(7);
+      }
+      if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.slice(3);
+      }
+      if (cleanResponse.endsWith('```')) {
+        cleanResponse = cleanResponse.slice(0, -3);
+      }
+      cleanResponse = cleanResponse.trim();
+      
+      const parsed = JSON.parse(cleanResponse);
+      return {
+        success: true,
+        original: parsed.original || '',
+        chinese: parsed.chinese || '',
+      };
+    } catch {
+      // 如果解析失败，把整个响应作为原文
+      return {
+        success: true,
+        original: response,
+        chinese: '',
+      };
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[AI外链助手] AI 生成失败:', message);
-    
-    return {
-      success: false,
-      error: message,
-    };
+    return { success: false, error: message };
   }
 }
 
 /**
- * 调用 AI API
+ * 调用 Azure OpenAI API
  */
-async function callAPI(
-  provider: AIProvider,
-  apiKey: string,
+async function callAzureOpenAI(
   systemPrompt: string,
-  userPrompt: string,
-  customEndpoint?: string
+  userPrompt: string
 ): Promise<string> {
-  const endpoint = customEndpoint || API_ENDPOINTS[provider];
-  const model = DEFAULT_MODELS[provider];
+  const url = `${AZURE_CONFIG.endpoint}/openai/deployments/${AZURE_CONFIG.deployment}/chat/completions?api-version=${AZURE_CONFIG.apiVersion}`;
   
-  // 创建 AbortController 用于超时控制
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
   
   try {
-    const response = await fetch(endpoint, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'api-key': AZURE_CONFIG.apiKey,
       },
       body: JSON.stringify({
-        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 1500,
       }),
       signal: controller.signal,
     });
@@ -122,79 +113,51 @@ async function callAPI(
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || response.statusText;
-      throw new Error(`API 错误 (${response.status}): ${errorMessage}`);
+      throw new Error(`API 错误 (${response.status}): ${errorData.error?.message || response.statusText}`);
     }
     
     const data = await response.json();
-    
-    // 提取生成的内容
     const content = data.choices?.[0]?.message?.content;
     
-    if (!content) {
-      throw new Error('API 返回内容为空');
-    }
+    if (!content) throw new Error('API 返回内容为空');
     
     return content.trim();
   } catch (error) {
     clearTimeout(timeoutId);
-    
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        throw new Error('API 请求超时，请检查网络连接');
-      }
-      throw error;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('API 请求超时');
     }
-    
-    throw new Error('未知错误');
+    throw error;
   }
 }
 
 /**
  * 测试 API 连接
  */
-export async function testAPIConnection(
-  provider: AIProvider,
-  apiKey: string,
-  customEndpoint?: string
-): Promise<{ success: boolean; message: string }> {
+export async function testAPIConnection(): Promise<{ success: boolean; message: string }> {
   try {
-    const endpoint = customEndpoint || API_ENDPOINTS[provider];
-    const model = DEFAULT_MODELS[provider];
+    const url = `${AZURE_CONFIG.endpoint}/openai/deployments/${AZURE_CONFIG.deployment}/chat/completions?api-version=${AZURE_CONFIG.apiVersion}`;
     
-    const response = await fetch(endpoint, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'api-key': AZURE_CONFIG.apiKey,
       },
       body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'user', content: 'Hi' },
-        ],
+        messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 5,
       }),
     });
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || response.statusText;
-      return {
-        success: false,
-        message: `连接失败: ${errorMessage}`,
-      };
+      return { success: false, message: `连接失败: ${errorData.error?.message || response.statusText}` };
     }
     
-    return {
-      success: true,
-      message: '连接成功',
-    };
+    return { success: true, message: '连接成功' };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      message: `连接失败: ${message}`,
-    };
+    return { success: false, message: `连接失败: ${message}` };
   }
 }

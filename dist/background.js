@@ -1,64 +1,60 @@
-const u={API_CONFIG:"apiConfig",PROJECT_INFO:"projectInfo"};function y(e){return e?btoa(e.split("").reverse().join("")):""}function A(e){if(!e)return"";try{return atob(e).split("").reverse().join("")}catch{return""}}const T={provider:"deepseek",deepseekApiKey:"",openaiApiKey:""},S={targetUrl:"",keywords:"",brandName:"",email:"",name:""};async function h(e){const r={provider:e.provider,deepseekApiKey:y(e.deepseekApiKey),openaiApiKey:y(e.openaiApiKey),customEndpoint:e.customEndpoint};await chrome.storage.local.set({[u.API_CONFIG]:r})}async function w(){const r=(await chrome.storage.local.get(u.API_CONFIG))[u.API_CONFIG];return r?{provider:r.provider||"deepseek",deepseekApiKey:A(r.deepseekApiKey||""),openaiApiKey:A(r.openaiApiKey||""),customEndpoint:r.customEndpoint}:T}async function E(e){await chrome.storage.local.set({[u.PROJECT_INFO]:e})}async function I(){return(await chrome.storage.local.get(u.PROJECT_INFO))[u.PROJECT_INFO]||S}async function C(){const[e,r]=await Promise.all([w(),I()]);return{api:e,project:r}}async function _(e){await Promise.all([h(e.api),E(e.project)])}function b(e,r,t){switch(e){case"comment":return N(r,t);case"directory":return $(t);default:throw new Error(`未知模式: ${e}`)}}function N(e,r){const t=e.title||"无标题",o=e.metaDescription||"",s=e.h1[0]||e.h2[0]||"",n=e.bodyText.slice(0,500),i=/[\u4e00-\u9fa5]/.test(e.title+e.bodyText.slice(0,200))?"请用中文回复。":"Please respond in English.";return`你是一个热情的博客读者，刚刚阅读完一篇文章，想要留下一条有价值的评论。
+const l={API_CONFIG:"apiConfig",PROJECT_INFO:"projectInfo"};function m(e){return e?btoa(e.split("").reverse().join("")):""}function f(e){if(!e)return"";try{return atob(e).split("").reverse().join("")}catch{return""}}const w={provider:"deepseek",deepseekApiKey:"",openaiApiKey:""},A={targetUrl:"",keywords:"",brandName:"",email:"",name:""};async function O(e){const t={provider:e.provider,deepseekApiKey:m(e.deepseekApiKey),openaiApiKey:m(e.openaiApiKey),customEndpoint:e.customEndpoint};await chrome.storage.local.set({[l.API_CONFIG]:t})}async function P(){const t=(await chrome.storage.local.get(l.API_CONFIG))[l.API_CONFIG];return t?{provider:t.provider||"deepseek",deepseekApiKey:f(t.deepseekApiKey||""),openaiApiKey:f(t.openaiApiKey||""),customEndpoint:t.customEndpoint}:w}async function y(e){await chrome.storage.local.set({[l.PROJECT_INFO]:e})}async function h(){return(await chrome.storage.local.get(l.PROJECT_INFO))[l.PROJECT_INFO]||A}async function E(){const[e,t]=await Promise.all([P(),h()]);return{api:e,project:t}}async function b(e){await Promise.all([O(e.api),y(e.project)])}function I(e){const t=(e.title+" "+e.bodyText.slice(0,500)).toLowerCase();return/[\u4e00-\u9fa5]/.test(t)?"zh":/[\u3040-\u309f\u30a0-\u30ff]/.test(t)?"ja":/[\uac00-\ud7af]/.test(t)?"ko":/[\u0400-\u04ff]/.test(t)?"ru":/\b(und|der|die|das|ist|für|mit)\b/.test(t)?"de":/\b(le|la|les|est|pour|avec|dans)\b/.test(t)?"fr":/\b(el|la|los|las|es|para|con)\b/.test(t)?"es":"en"}const $={zh:"中文",en:"英文",ja:"日文",ko:"韩文",de:"德文",fr:"法文",es:"西班牙文",ru:"俄文"};function k(e,t,r){const s=I(t),o=$[s]||"英文";switch(e){case"comment":return T(t,r,s,o);case"directory":return C(r,s,o);default:throw new Error(`未知模式: ${e}`)}}function T(e,t,r,s){const o=e.title||"无标题",a=e.h1[0]||e.h2[0]||"",n=e.bodyText.slice(0,500),u=r==="zh";return`你是一个热情的博客读者，需要为一篇${s}文章写评论。
 
 ## 文章信息
-- 标题：${t}
-${s?`- 主标题：${s}`:""}
-${o?`- 摘要：${o}`:""}
+- 标题：${o}
+${a?`- 主标题：${a}`:""}
 - 内容预览：${n}...
+- 文章语言：${s}
 
 ## 你的背景
-- 你关注${r.keywords}相关领域
-- 你运营一个网站：${r.targetUrl}
+- 你关注 ${t.keywords||"相关"} 领域
+- 你的网站：${t.targetUrl}
 
 ## 任务
-请写一条博客评论，要求：
+请生成两个版本的评论，用 JSON 格式返回：
+
+{
+  "original": "用${s}写的评论（匹配文章语言）",
+  "chinese": "中文版本的评论"
+}
+
+## 评论要求
 1. 字数：50-100字
-2. 语气自然真诚，像一个真正阅读过文章的读者
-3. 可以选择以下任意一种风格：
-   - 赞同作者观点并补充自己的见解
-   - 分享相关的个人经验
-   - 提出一个有深度的问题
-4. 在适当的位置自然地提及你的网站（${r.targetUrl}）和你关注的领域（${r.keywords}）
-5. 不要显得像广告或垃圾评论
-6. 不要使用"很棒"、"好文章"等空洞的表述
+2. 语气自然真诚，像真正阅读过文章的读者
+3. 可以赞同观点、分享经验或提出问题
+4. 适当提及你的网站（${t.targetUrl}）
+5. 不要像广告或垃圾评论
+6. original 必须用${s}写，要符合该语言的表达习惯
+${u?"7. 如果文章是中文，original 和 chinese 内容相同即可":""}
 
-${i}
-
-请直接输出评论内容，不要有任何前缀或解释。`}function $(e){return`你是一名专业的 SEO 文案撰写专家，需要为一个网站撰写提交到导航站的描述。
+请只返回 JSON，不要有其他内容。`}function C(e,t,r){const s=t==="zh";return`你是 SEO 文案专家，需要为网站撰写导航站提交描述。
 
 ## 网站信息
-- 网站名称：${e.brandName||"待填写"}
-- 网站地址：${e.targetUrl}
-- 核心业务/关键词：${e.keywords}
+- 名称：${e.brandName||"待填写"}
+- 网址：${e.targetUrl}
+- 关键词：${e.keywords}
+- 目标导航站语言：${r}
 
 ## 任务
-请撰写一段专业的网站描述，用于提交到各类导航站/网站目录。
+请生成两个版本的网站描述，用 JSON 格式返回：
 
-## 要求
+{
+  "original": "用${r}写的网站描述（匹配导航站语言）",
+  "chinese": "中文版本的网站描述"
+}
+
+## 描述要求
 1. 字数：200-300字
-2. 风格专业正式，具有说服力
-3. 包含以下要素：
-   - 网站名称和核心定位
-   - 主要产品/服务/内容
-   - 独特优势或差异化卖点
-   - 目标用户群体
-   - 品牌价值主张
-4. SEO 友好：自然融入关键词（${e.keywords}）
-5. 不要使用夸大或虚假宣传的措辞
-6. 不要使用第一人称（我们、我）
-7. 段落清晰，便于阅读
+2. 专业正式，有说服力
+3. 包含核心业务、优势、目标用户
+4. SEO 友好，自然融入关键词
+5. 不要夸大宣传
+6. original 必须用${r}写，符合该语言的表达习惯
+${s?"7. 如果是中文导航站，original 和 chinese 内容相同即可":""}
 
-请直接输出网站描述，不要有任何前缀或解释。`}function v(){return`你是一个专业的内容创作助手，专注于帮助用户创作高质量的 SEO 相关内容。
+请只返回 JSON，不要有其他内容。`}function N(){return`你是专业的多语言内容创作助手。你能够：
+1. 准确识别目标语言并用该语言写作
+2. 写出符合当地语言习惯的自然内容
+3. 同时提供中文版本便于用户理解
 
-核心原则：
-1. 内容真实自然，不像 AI 生成
-2. 符合人类的写作习惯和语气
-3. 避免过度使用形容词和夸张表达
-4. 关注读者价值，不纯粹为 SEO 而写
-5. 遵守平台规则，不生成垃圾内容
-
-输出规范：
-- 直接输出最终内容
-- 不要添加标题、前缀或解释
-- 不要使用 Markdown 格式（除非明确要求）
-- 保持指定的字数范围`}const P={deepseek:"https://api.deepseek.com/v1/chat/completions",openai:"https://api.openai.com/v1/chat/completions"},O={deepseek:"deepseek-chat",openai:"gpt-4o-mini"},F=3e4;async function K(e,r){try{const t=await w(),o=await I(),s=t.provider==="deepseek"?t.deepseekApiKey:t.openaiApiKey;if(!s)return{success:!1,error:`请先配置 ${t.provider==="deepseek"?"DeepSeek":"OpenAI"} API Key`};if(!o.targetUrl)return{success:!1,error:"请先配置推广网址"};const n=b(e,r,o),c=v();return{success:!0,content:await G(t.provider,s,c,n,t.customEndpoint)}}catch(t){const o=t instanceof Error?t.message:String(t);return console.error("[AI外链助手] AI 生成失败:",o),{success:!1,error:o}}}async function G(e,r,t,o,s){var p,m,d,f;const n=s||P[e],c=O[e],i=new AbortController,l=setTimeout(()=>i.abort(),F);try{const a=await fetch(n,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${r}`},body:JSON.stringify({model:c,messages:[{role:"system",content:t},{role:"user",content:o}],temperature:.7,max_tokens:1e3}),signal:i.signal});if(clearTimeout(l),!a.ok){const k=((p=(await a.json().catch(()=>({}))).error)==null?void 0:p.message)||a.statusText;throw new Error(`API 错误 (${a.status}): ${k}`)}const g=(f=(d=(m=(await a.json()).choices)==null?void 0:m[0])==null?void 0:d.message)==null?void 0:f.content;if(!g)throw new Error("API 返回内容为空");return g.trim()}catch(a){throw clearTimeout(l),a instanceof Error?a.name==="AbortError"?new Error("API 请求超时，请检查网络连接"):a:new Error("未知错误")}}async function D(e,r,t){var o;try{const s=t||P[e],n=O[e],c=await fetch(s,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${r}`},body:JSON.stringify({model:n,messages:[{role:"user",content:"Hi"}],max_tokens:5})});return c.ok?{success:!0,message:"连接成功"}:{success:!1,message:`连接失败: ${((o=(await c.json().catch(()=>({}))).error)==null?void 0:o.message)||c.statusText}`}}catch(s){return{success:!1,message:`连接失败: ${s instanceof Error?s.message:String(s)}`}}}console.log("[AI外链助手] Background Service Worker 已启动");chrome.runtime.onInstalled.addListener(e=>{e.reason==="install"?(console.log("[AI外链助手] 插件已安装"),chrome.runtime.openOptionsPage()):e.reason==="update"&&console.log("[AI外链助手] 插件已更新到版本:",chrome.runtime.getManifest().version)});chrome.runtime.onMessage.addListener((e,r,t)=>(M(e,t),!0));async function M(e,r){console.log("[AI外链助手] 收到消息:",e.type);try{switch(e.type){case"GENERATE_CONTENT":await U(e,r);break;case"GET_CONFIG":await j(r);break;case"SAVE_CONFIG":await J(e.payload,r);break;case"SAVE_API_CONFIG":await L(e.payload,r);break;case"SAVE_PROJECT_INFO":await x(e.payload,r);break;case"TEST_API":await B(e.payload,r);break;default:console.warn("[AI外链助手] 未知消息类型:",e.type),r({success:!1,error:"未知消息类型"})}}catch(t){const o=t instanceof Error?t.message:String(t);console.error("[AI外链助手] 处理消息失败:",o),r({success:!1,error:o})}}async function U(e,r){const{mode:t,pageContent:o,projectInfo:s}=e.payload;console.log("[AI外链助手] 开始生成内容, 模式:",t);const n=await K(t,o);console.log("[AI外链助手] 生成完成:",n.success?"成功":n.error),r(n)}async function j(e){try{const r=await C();e({success:!0,data:r})}catch(r){const t=r instanceof Error?r.message:String(r);e({success:!1,error:t})}}async function J(e,r){try{await _(e),r({success:!0})}catch(t){const o=t instanceof Error?t.message:String(t);r({success:!1,error:o})}}async function L(e,r){try{await h(e),r({success:!0})}catch(t){const o=t instanceof Error?t.message:String(t);r({success:!1,error:o})}}async function x(e,r){try{await E(e),r({success:!0})}catch(t){const o=t instanceof Error?t.message:String(t);r({success:!1,error:o})}}async function B(e,r){const t=await D(e.provider,e.apiKey,e.customEndpoint);r(t)}
+请严格按要求返回 JSON 格式，不要添加任何解释或 markdown 标记。`}const c={endpoint:"https://openai-baibei.openai.azure.com",deployment:"gpt-4.1",apiKey:"cd21199a32a8440c9bce461b7de7446b",apiVersion:"2024-12-01-preview"},_=3e4;async function S(e,t){try{const r=await h();if(!r.targetUrl)return{success:!1,error:"请先配置推广网址"};const s=k(e,t,r),o=N(),a=await F(o,s);try{let n=a.trim();n.startsWith("```json")&&(n=n.slice(7)),n.startsWith("```")&&(n=n.slice(3)),n.endsWith("```")&&(n=n.slice(0,-3)),n=n.trim();const u=JSON.parse(n);return{success:!0,original:u.original||"",chinese:u.chinese||""}}catch{return{success:!0,original:a,chinese:""}}}catch(r){return{success:!1,error:r instanceof Error?r.message:String(r)}}}async function F(e,t){var a,n,u,p;const r=`${c.endpoint}/openai/deployments/${c.deployment}/chat/completions?api-version=${c.apiVersion}`,s=new AbortController,o=setTimeout(()=>s.abort(),_);try{const i=await fetch(r,{method:"POST",headers:{"Content-Type":"application/json","api-key":c.apiKey},body:JSON.stringify({messages:[{role:"system",content:e},{role:"user",content:t}],temperature:.7,max_tokens:1500}),signal:s.signal});if(clearTimeout(o),!i.ok){const g=await i.json().catch(()=>({}));throw new Error(`API 错误 (${i.status}): ${((a=g.error)==null?void 0:a.message)||i.statusText}`)}const d=(p=(u=(n=(await i.json()).choices)==null?void 0:n[0])==null?void 0:u.message)==null?void 0:p.content;if(!d)throw new Error("API 返回内容为空");return d.trim()}catch(i){throw clearTimeout(o),i instanceof Error&&i.name==="AbortError"?new Error("API 请求超时"):i}}async function v(){var e;try{const t=`${c.endpoint}/openai/deployments/${c.deployment}/chat/completions?api-version=${c.apiVersion}`,r=await fetch(t,{method:"POST",headers:{"Content-Type":"application/json","api-key":c.apiKey},body:JSON.stringify({messages:[{role:"user",content:"Hi"}],max_tokens:5})});return r.ok?{success:!0,message:"连接成功"}:{success:!1,message:`连接失败: ${((e=(await r.json().catch(()=>({}))).error)==null?void 0:e.message)||r.statusText}`}}catch(t){return{success:!1,message:`连接失败: ${t instanceof Error?t.message:String(t)}`}}}console.log("[AI外链助手] Background Service Worker 已启动");chrome.action.onClicked.addListener(async e=>{try{await chrome.sidePanel.open({windowId:e.windowId})}catch(t){console.log("Side panel error:",t)}});chrome.runtime.onInstalled.addListener(e=>{e.reason==="install"&&chrome.runtime.openOptionsPage();try{chrome.sidePanel.setOptions({enabled:!0}),chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:!0})}catch{}});chrome.runtime.onMessage.addListener((e,t,r)=>(J(e,r),!0));async function J(e,t){try{switch(e.type){case"GENERATE_CONTENT":const r=e,s=await S(r.payload.mode,r.payload.pageContent);t(s);break;case"GET_CONFIG":const o=await E();t({success:!0,data:o});break;case"SAVE_CONFIG":await b(e.payload),t({success:!0});break;case"SAVE_PROJECT_INFO":await y(e.payload),t({success:!0});break;case"TEST_API":const a=await v();t(a);break;default:t({success:!1,error:"未知消息类型"})}}catch(r){const s=r instanceof Error?r.message:String(r);t({success:!1,error:s})}}

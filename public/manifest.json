@@ -12,21 +12,23 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "sidePanel"
   ],
   "host_permissions": [
-    "https://api.deepseek.com/*",
-    "https://api.openai.com/*",
+    "https://openai-baibei.openai.azure.com/*",
     "<all_urls>"
   ],
   "action": {
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.svg",
       "48": "icons/icon48.svg",
       "128": "icons/icon128.svg"
     },
     "default_title": "AI 外链助手"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "background": {
     "service_worker": "background.js",

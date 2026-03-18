@@ -294,3 +294,79 @@ export function clearHighlights(): void {
     }
   }
 }
+
+/**
+ * 定位到表单位置并高亮
+ */
+export function scrollToForm(): { success: boolean; message: string } {
+  // 优先找评论/描述类的 textarea（最重要的字段）
+  const commentConfig = FIELD_CONFIGS.find(c => c.type === 'comment');
+  let targetElement: HTMLElement | null = null;
+
+  if (commentConfig) {
+    targetElement = findField(commentConfig);
+  }
+
+  // 如果没找到评论框，尝试找其他任意字段
+  if (!targetElement) {
+    for (const config of FIELD_CONFIGS) {
+      const element = findField(config);
+      if (element) {
+        targetElement = element;
+        break;
+      }
+    }
+  }
+
+  // 还是没找到，尝试通用选择器
+  if (!targetElement) {
+    const genericSelectors = [
+      'textarea',
+      'input[type="text"]',
+      'input[type="email"]',
+      'input[type="url"]',
+      'div[contenteditable="true"]',
+    ];
+    
+    for (const selector of genericSelectors) {
+      const element = document.querySelector(selector);
+      if (element instanceof HTMLElement && isVisible(element)) {
+        targetElement = element;
+        break;
+      }
+    }
+  }
+
+  if (targetElement) {
+    // 滚动到元素位置
+    targetElement.scrollIntoView({ 
+      behavior: 'smooth', 
+      block: 'center' 
+    });
+
+    // 高亮显示
+    const originalOutline = targetElement.style.outline;
+    const originalOutlineOffset = targetElement.style.outlineOffset;
+    const originalBackground = targetElement.style.backgroundColor;
+    
+    targetElement.style.outline = '3px solid #e67e22';
+    targetElement.style.outlineOffset = '4px';
+    targetElement.style.backgroundColor = '#fff8f0';
+
+    // 3秒后移除高亮
+    setTimeout(() => {
+      if (targetElement) {
+        targetElement.style.outline = originalOutline;
+        targetElement.style.outlineOffset = originalOutlineOffset;
+        targetElement.style.backgroundColor = originalBackground;
+      }
+    }, 3000);
+
+    // 聚焦
+    targetElement.focus();
+
+    return { success: true, message: '已定位到表单' };
+  }
+
+  return { success: false, message: '未找到表单' };
+}

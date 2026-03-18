@@ -18,6 +18,7 @@ export type MessageType =
   | 'GENERATE_RESULT'    // Background -> Popup: 返回生成结果
   | 'FILL_FORM'          // Popup -> Content: 请求填充表单
   | 'FILL_RESULT'        // Content -> Popup: 返回填充结果
+  | 'SCROLL_TO_FORM'     // Popup -> Content: 滚动到表单位置
   | 'GET_CONFIG'         // 任意 -> Background: 获取配置
   | 'CONFIG_RESULT'      // Background -> 任意: 返回配置
   | 'SAVE_CONFIG';       // Options -> Background: 保存配置
@@ -54,6 +55,9 @@ export type FillFormMessage = BaseMessage<'FILL_FORM', FillData>;
 /** 填充结果响应 */
 export type FillResultMessage = BaseMessage<'FILL_RESULT', FillResult>;
 
+/** 滚动到表单请求 */
+export type ScrollToFormMessage = BaseMessage<'SCROLL_TO_FORM'>;
+
 /** 所有消息类型联合 */
 export type Message =
   | ScrapePageMessage
@@ -61,7 +65,8 @@ export type Message =
   | GenerateContentMessage
   | GenerateResultMessage
   | FillFormMessage
-  | FillResultMessage;
+  | FillResultMessage
+  | ScrollToFormMessage;
 
 // ========================================
 // 消息发送辅助函数
