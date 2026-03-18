@@ -1,0 +1,170 @@
+# AI 外链助手 (Backlink AI Assistant)
+
+一款专为 SEO 外链专员设计的 Chrome 浏览器插件，通过 **网页上下文感知 + AI 内容生成 + 自动表单填充** 的流程，大幅提升外链发布效率。
+
+## 功能特性
+
+- **智能内容抓取**：自动提取目标网页的标题、描述、正文等关键信息
+- **AI 内容生成**：支持 DeepSeek / OpenAI API，生成个性化评论或站点描述
+- **智能表单填充**：自动识别并填充表单字段（URL、邮箱、评论等）
+- **两种工作模式**：
+  - 评论模式：生成博客/论坛评论
+  - 导航站模式：生成站点描述
+
+## 技术栈
+
+- React 18 + TypeScript
+- Vite 5 构建
+- Chrome Extension Manifest V3
+
+## 开发指南
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 开发模式
+
+```bash
+npm run dev
+```
+
+### 生产构建
+
+```bash
+npm run build
+```
+
+### 加载插件
+
+1. 打开 Chrome，访问 `chrome://extensions/`
+2. 开启右上角「开发者模式」
+3. 点击「加载已解压的扩展程序」
+4. 选择项目的 `dist` 目录
+
+## 项目结构
+
+```
+BacklinkAI/
+├── src/
+│   ├── popup/           # Popup 界面 (React)
+│   │   ├── App.tsx      # 主应用组件
+│   │   ├── main.tsx     # 入口文件
+│   │   ├── components/  # UI 组件
+│   │   │   ├── ModeSelector.tsx    # 模式切换
+│   │   │   ├── GenerateButton.tsx  # 操作按钮
+│   │   │   ├── ContentPreview.tsx  # 内容预览
+│   │   │   └── StatusIndicator.tsx # 状态指示
+│   │   └── hooks/
+│   │       └── useAIGenerate.ts    # 生成逻辑 Hook
+│   ├── options/         # 设置页面 (React)
+│   │   ├── App.tsx      # 设置页面组件
+│   │   └── main.tsx     # 入口文件
+│   ├── background/      # Service Worker
+│   │   ├── index.ts     # 消息处理入口
+│   │   ├── ai-client.ts # AI API 客户端
+│   │   └── prompts.ts   # Prompt 模板
+│   ├── content/         # Content Script
+│   │   ├── index.ts     # 消息处理入口
+│   │   ├── scraper.ts   # 页面内容抓取
+│   │   └── form-filler.ts # 表单填充
+│   ├── shared/          # 共享模块
+│   │   ├── types.ts     # TypeScript 类型定义
+│   │   ├── messages.ts  # 消息协议
+│   │   └── storage.ts   # 存储封装
+│   └── styles/
+│       └── popup.css    # 全局样式
+├── public/
+│   ├── manifest.json    # 插件配置
+│   └── icons/           # 图标资源
+├── popup.html           # Popup 入口
+├── options.html         # 设置页入口
+├── vite.config.ts       # 构建配置
+├── tsconfig.json        # TypeScript 配置
+└── package.json         # 项目依赖
+```
+
+## 核心模块说明
+
+### 1. 内容抓取 (scraper.ts)
+
+- 提取页面标题、Meta Description、H1/H2 标题
+- 智能识别主要内容区域（article、main 等）
+- 自动清洗文本，排除导航、广告等干扰内容
+- 支持 SPA 页面的动态加载
+
+### 2. AI 生成 (ai-client.ts)
+
+- 支持 DeepSeek 和 OpenAI 两种 API
+- 评论模式：基于文章内容生成自然评论
+- 导航站模式：生成专业的站点描述
+- 内置 Prompt 模板，可自定义
+
+### 3. 表单填充 (form-filler.ts)
+
+- 智能识别表单字段（URL、邮箱、姓名、评论等）
+- 支持多种选择器模式匹配
+- 模拟人类输入行为，触发完整事件链
+- 兼容 React/Vue 等框架构建的表单
+
+### 4. 存储管理 (storage.ts)
+
+- API Key 混淆存储
+- 项目信息持久化
+- 配置完整性检查
+
+## 使用流程
+
+1. **初始化配置**
+   - 在设置页面填入 API Key（DeepSeek 或 OpenAI）
+   - 配置推广网址、关键词、品牌名称等信息
+
+2. **访问目标站点**
+   - 打开要发外链的博客或导航站
+
+3. **生成内容**
+   - 点击插件图标打开面板
+   - 选择模式（评论/导航站）
+   - 点击"一键处理"
+
+4. **填充表单**
+   - 检查生成的内容，可编辑修改
+   - 点击"填充表单"自动填充
+
+5. **人工提交**
+   - 检查填充结果
+   - 手动点击页面的提交按钮
+
+## 更新日志
+
+### v1.0.0 (2024-03)
+
+- 初始化项目结构
+- 实现 Popup UI 界面
+- 实现 Settings 设置页面
+- 集成 DeepSeek / OpenAI API
+- 实现页面内容抓取模块
+- 实现智能表单填充模块
+- 添加消息通信机制
+- 完成类型定义和存储封装
+
+## 注意事项
+
+- API Key 仅存储在本地，不会上传至任何服务器
+- 建议在填充前人工审核 AI 生成的内容
+- 某些复杂表单（Shadow DOM、iframe）可能需要手动填写
+- 使用 DeepSeek API 无需科学上网
+
+## 后期规划
+
+- [ ] 分类自动识别
+- [ ] 外链发布记录导出
+- [ ] 多语言支持
+- [ ] 多项目管理
+- [ ] 自定义 Prompt 模板
+
+## License
+
+MIT
