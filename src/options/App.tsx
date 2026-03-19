@@ -1,19 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ProjectInfo } from '../shared/types';
+import type { ProjectInfo, APIConfig } from '../shared/types';
 
 const DEFAULT_PROJECT_INFO: ProjectInfo = {
   targetUrl: '',
   keywords: '',
   brandName: '',
+  tagline: '',
   description: '',
   email: '',
   name: '',
 };
 
+const DEFAULT_API_CONFIG: APIConfig = {
+  provider: 'azure',
+  apiKey: '',
+  azureEndpoint: 'https://openai-baibei.openai.azure.com',
+  azureDeployment: 'gpt-4.1',
+  azureApiVersion: '2024-12-01-preview',
+};
+
 function App() {
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>(DEFAULT_PROJECT_INFO);
+  const [apiConfig, setApiConfig] = useState<APIConfig>(DEFAULT_API_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingApi, setSavingApi] = useState(false);
   const [testing, setTesting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
@@ -33,6 +44,9 @@ function App() {
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
       if (response.success && response.data) {
         setProjectInfo(response.data.project);
+        if (response.data.api) {
+          setApiConfig(response.data.api);
+        }
       }
     } catch (error) {
       console.error('加载配置失败:', error);
@@ -65,9 +79,40 @@ function App() {
     }
   }, [projectInfo]);
   
+  const handleSaveApiConfig = useCallback(async () => {
+    setSavingApi(true);
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'SAVE_API_CONFIG',
+        payload: apiConfig,
+      });
+      
+      if (response.success) {
+        showToast('success', 'API 配置已保存');
+      } else {
+        showToast('error', response.error || '保存失败');
+      }
+    } catch (error) {
+      showToast('error', '保存失败');
+    } finally {
+      setSavingApi(false);
+    }
+  }, [apiConfig]);
+  
   const handleTestAPI = useCallback(async () => {
+    if (!apiConfig.apiKey) {
+      showToast('error', '请先填写 API Key');
+      return;
+    }
+    
     setTesting(true);
     try {
+      // 先保存配置
+      await chrome.runtime.sendMessage({
+        type: 'SAVE_API_CONFIG',
+        payload: apiConfig,
+      });
+      
       const response = await chrome.runtime.sendMessage({ type: 'TEST_API' });
       
       if (response.success) {
@@ -80,7 +125,7 @@ function App() {
     } finally {
       setTesting(false);
     }
-  }, []);
+  }, [apiConfig]);
   
   if (loading) {
     return (
@@ -98,21 +143,83 @@ function App() {
       <h1 className="page-title">AI 外链助手设置</h1>
       <p className="page-subtitle">配置推广项目信息</p>
       
-      {/* API 状态卡片 */}
+      {/* API 配置卡片 */}
       <div className="settings-card">
         <h2 className="settings-card-title">
-          <span>API 状态</span>
+          <span>API 配置</span>
         </h2>
-        <p style={{ marginBottom: '16px', color: '#6b7280' }}>
-          已配置 Azure OpenAI (gpt-4.1)
-        </p>
-        <button
-          className="btn btn-secondary"
-          onClick={handleTestAPI}
-          disabled={testing}
-        >
-          {testing ? '测试中...' : '测试连接'}
-        </button>
+        
+        <div className="form-group">
+          <label className="form-label">
+            API Key <span style={{ color: '#ef4444' }}>*</span>
+            <span className="form-label-hint"> - Azure OpenAI API Key</span>
+          </label>
+          <input
+            type="password"
+            className="form-input"
+            value={apiConfig.apiKey}
+            onChange={(e) => setApiConfig({ ...apiConfig, apiKey: e.target.value })}
+            placeholder="输入你的 Azure OpenAI API Key"
+          />
+        </div>
+        
+        <div className="form-group">
+          <label className="form-label">
+            Azure 端点
+            <span className="form-label-hint"> - Azure OpenAI 资源端点</span>
+          </label>
+          <input
+            type="url"
+            className="form-input"
+            value={apiConfig.azureEndpoint}
+            onChange={(e) => setApiConfig({ ...apiConfig, azureEndpoint: e.target.value })}
+            placeholder="https://your-resource.openai.azure.com"
+          />
+        </div>
+        
+        <div className="form-row">
+          <div className="form-group" style={{ flex: 1 }}>
+            <label className="form-label">
+              部署名称
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              value={apiConfig.azureDeployment}
+              onChange={(e) => setApiConfig({ ...apiConfig, azureDeployment: e.target.value })}
+              placeholder="gpt-4.1"
+            />
+          </div>
+          <div className="form-group" style={{ flex: 1 }}>
+            <label className="form-label">
+              API 版本
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              value={apiConfig.azureApiVersion}
+              onChange={(e) => setApiConfig({ ...apiConfig, azureApiVersion: e.target.value })}
+              placeholder="2024-12-01-preview"
+            />
+          </div>
+        </div>
+        
+        <div className="action-bar" style={{ gap: '12px' }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleSaveApiConfig}
+            disabled={savingApi}
+          >
+            {savingApi ? '保存中...' : '保存 API 配置'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleTestAPI}
+            disabled={testing || !apiConfig.apiKey}
+          >
+            {testing ? '测试中...' : '测试连接'}
+          </button>
+        </div>
       </div>
       
       {/* 项目信息卡片 */}
@@ -160,6 +267,20 @@ function App() {
             value={projectInfo.brandName}
             onChange={(e) => setProjectInfo({ ...projectInfo, brandName: e.target.value })}
             placeholder="你的品牌名"
+          />
+        </div>
+        
+        <div className="form-group">
+          <label className="form-label">
+            网站标语
+            <span className="form-label-hint"> - 一句话介绍（用于导航站简短描述字段）</span>
+          </label>
+          <input
+            type="text"
+            className="form-input"
+            value={projectInfo.tagline}
+            onChange={(e) => setProjectInfo({ ...projectInfo, tagline: e.target.value })}
+            placeholder="例如：最智能的 AI 数据提取工具"
           />
         </div>
         

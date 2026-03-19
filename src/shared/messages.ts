@@ -20,6 +20,7 @@ export type MessageType =
   | 'FILL_RESULT'        // Content -> Popup: 返回填充结果
   | 'SCROLL_TO_FORM'     // Popup -> Content: 滚动到表单位置
   | 'DETECT_FORM'        // Popup -> Content: 检测表单字段
+  | 'HIGHLIGHT_FIELD'    // Popup -> Content: 高亮单个字段
   | 'GET_CONFIG'         // 任意 -> Background: 获取配置
   | 'CONFIG_RESULT'      // Background -> 任意: 返回配置
   | 'SAVE_CONFIG';       // Options -> Background: 保存配置
@@ -60,7 +61,10 @@ export type FillResultMessage = BaseMessage<'FILL_RESULT', FillResult>;
 export type ScrollToFormMessage = BaseMessage<'SCROLL_TO_FORM'>;
 
 /** 检测表单字段请求 */
-export type DetectFormMessage = BaseMessage<'DETECT_FORM'>;
+export type DetectFormMessage = BaseMessage<'DETECT_FORM', { mode?: 'comment' | 'directory' }>;
+
+/** 高亮单个字段请求 */
+export type HighlightFieldMessage = BaseMessage<'HIGHLIGHT_FIELD', { fieldType: string }>;
 
 /** 所有消息类型联合 */
 export type Message =
@@ -71,7 +75,8 @@ export type Message =
   | FillFormMessage
   | FillResultMessage
   | ScrollToFormMessage
-  | DetectFormMessage;
+  | DetectFormMessage
+  | HighlightFieldMessage;
 
 // ========================================
 // 消息发送辅助函数

@@ -154,8 +154,10 @@ export function useAIGenerate(): UseAIGenerateReturn {
       const fillData: FillData = {
         url: projectInfo.targetUrl,
         email: projectInfo.email,
-        name: projectInfo.name || projectInfo.brandName,
+        sitename: projectInfo.brandName || '',
+        author: projectInfo.name || '',
         title: projectInfo.brandName || projectInfo.keywords,
+        tagline: projectInfo.tagline || '',
         content: content,
       };
       

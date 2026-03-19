@@ -33,15 +33,18 @@ function deobfuscate(text: string): string {
 // ========================================
 
 export const DEFAULT_API_CONFIG: APIConfig = {
-  provider: 'deepseek',
-  deepseekApiKey: '',
-  openaiApiKey: '',
+  provider: 'azure',
+  apiKey: '',
+  azureEndpoint: 'https://openai-baibei.openai.azure.com',
+  azureDeployment: 'gpt-4.1',
+  azureApiVersion: '2024-12-01-preview',
 };
 
 export const DEFAULT_PROJECT_INFO: ProjectInfo = {
   targetUrl: '',
   keywords: '',
   brandName: '',
+  tagline: '',
   description: '',
   email: '',
   name: '',
@@ -57,9 +60,10 @@ export const DEFAULT_PROJECT_INFO: ProjectInfo = {
 export async function saveAPIConfig(config: APIConfig): Promise<void> {
   const stored = {
     provider: config.provider,
-    deepseekApiKey: obfuscate(config.deepseekApiKey),
-    openaiApiKey: obfuscate(config.openaiApiKey),
-    customEndpoint: config.customEndpoint,
+    apiKey: obfuscate(config.apiKey),
+    azureEndpoint: config.azureEndpoint,
+    azureDeployment: config.azureDeployment,
+    azureApiVersion: config.azureApiVersion,
   };
   await chrome.storage.local.set({ [STORAGE_KEYS.API_CONFIG]: stored });
 }
@@ -76,27 +80,25 @@ export async function getAPIConfig(): Promise<APIConfig> {
   }
 
   return {
-    provider: stored.provider || 'deepseek',
-    deepseekApiKey: deobfuscate(stored.deepseekApiKey || ''),
-    openaiApiKey: deobfuscate(stored.openaiApiKey || ''),
-    customEndpoint: stored.customEndpoint,
+    provider: stored.provider || 'azure',
+    apiKey: deobfuscate(stored.apiKey || ''),
+    azureEndpoint: stored.azureEndpoint || DEFAULT_API_CONFIG.azureEndpoint,
+    azureDeployment: stored.azureDeployment || DEFAULT_API_CONFIG.azureDeployment,
+    azureApiVersion: stored.azureApiVersion || DEFAULT_API_CONFIG.azureApiVersion,
   };
 }
 
 /**
- * 获取当前选择的 API Key
+ * 获取当前 API Key
  */
 export async function getCurrentApiKey(): Promise<{ provider: AIProvider; apiKey: string } | null> {
   const config = await getAPIConfig();
-  const apiKey = config.provider === 'deepseek' 
-    ? config.deepseekApiKey 
-    : config.openaiApiKey;
   
-  if (!apiKey) {
+  if (!config.apiKey) {
     return null;
   }
 
-  return { provider: config.provider, apiKey };
+  return { provider: config.provider, apiKey: config.apiKey };
 }
 
 // ========================================
@@ -151,11 +153,7 @@ export async function isConfigComplete(): Promise<{ complete: boolean; missing: 
   const missing: string[] = [];
 
   // 检查 API Key
-  const hasApiKey = config.api.provider === 'deepseek'
-    ? !!config.api.deepseekApiKey
-    : !!config.api.openaiApiKey;
-  
-  if (!hasApiKey) {
+  if (!config.api.apiKey) {
     missing.push('API Key');
   }
 

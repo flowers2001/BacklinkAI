@@ -1,135 +1,301 @@
 // ========================================
-// 智能表单填充模块
+// 智能表单填充模块 - 加权评分算法
 // ========================================
 
 import type { FillData, FillResult } from '../shared/types';
 
 /** 字段类型 */
-type FieldType = 'url' | 'email' | 'name' | 'title' | 'comment';
+type FieldType = 'url' | 'email' | 'sitename' | 'author' | 'title' | 'tagline' | 'comment';
 
-/** 字段映射配置 */
-interface FieldConfig {
+// ========================================
+// 字段特征库 (Field Schema)
+// ========================================
+
+interface FieldSchema {
   type: FieldType;
-  selectors: string[];
-  fallbackSelectors?: string[];
+  keywords: string[];
+  inputTypes?: string[];
+  tagPreference?: 'input' | 'textarea' | 'any';
 }
 
-/** 字段映射表（按优先级排序） */
-const FIELD_CONFIGS: FieldConfig[] = [
+/** 字段特征映射表 */
+const FIELD_MAP: FieldSchema[] = [
   {
     type: 'url',
-    selectors: [
-      'input[name*="url" i]',
-      'input[name*="website" i]',
-      'input[name*="site" i]',
-      'input[name*="link" i]',
-      'input[id*="url" i]',
-      'input[id*="website" i]',
-      'input[placeholder*="url" i]',
-      'input[placeholder*="website" i]',
-      'input[placeholder*="网址" i]',
-      'input[placeholder*="链接" i]',
-      'input[type="url"]',
-    ],
+    keywords: ['url', 'link', 'website', 'site', 'href', 'homepage', '网址', '网站', '地址', '链接', '域名'],
+    inputTypes: ['url', 'text'],
+    tagPreference: 'input',
   },
   {
     type: 'email',
-    selectors: [
-      'input[type="email"]',
-      'input[name*="email" i]',
-      'input[name*="mail" i]',
-      'input[id*="email" i]',
-      'input[placeholder*="email" i]',
-      'input[placeholder*="邮箱" i]',
-    ],
+    keywords: ['email', 'mail', 'contact', 'e-mail', '邮箱', '邮件', '联系'],
+    inputTypes: ['email', 'text'],
+    tagPreference: 'input',
   },
   {
-    type: 'name',
-    selectors: [
-      'input[name="name"]',
-      'input[name="author"]',
-      'input[name*="author" i]',
-      'input[id*="author" i]',
-      'input[name*="nickname" i]',
-      'input[placeholder*="name" i]',
-      'input[placeholder*="姓名" i]',
-      'input[placeholder*="昵称" i]',
-    ],
-    fallbackSelectors: [
-      'input[name*="name" i]',
-      'input[id*="name" i]',
-    ],
+    type: 'sitename',
+    keywords: ['sitename', 'site_name', 'site-name', 'websitename', 'website_name', 'webname', 'web_name', 'project', 'projectname', 'project_name', 'project-name', 'brand', 'company', 'organization', 'appname', 'app_name', 'app-name', 'productname', 'product_name', '网站名', '站点名', '品牌', '公司', '企业', '项目名', '应用名', '产品名'],
+    inputTypes: ['text'],
+    tagPreference: 'input',
+  },
+  {
+    type: 'author',
+    keywords: ['author', 'owner', 'creator', 'submitter', 'publisher', 'contributor', 'your_name', 'your-name', 'yourname', 'fullname', 'full_name', 'full-name', '作者', '所有者', '创建者', '提交者', '发布者'],
+    inputTypes: ['text'],
+    tagPreference: 'input',
   },
   {
     type: 'title',
-    selectors: [
-      'input[name*="title" i]',
-      'input[id*="title" i]',
-      'input[name*="subject" i]',
-      'input[placeholder*="title" i]',
-      'input[placeholder*="标题" i]',
-    ],
+    keywords: ['title', 'subject', 'headline', 'heading', 'project_title', 'project-title', 'site_title', 'site-title', '标题', '主题', '项目标题', '网站标题'],
+    inputTypes: ['text'],
+    tagPreference: 'input',
+  },
+  {
+    type: 'tagline',
+    keywords: ['tagline', 'slogan', 'motto', 'subtitle', 'short_desc', 'short-desc', 'short_description', 'short-description', 'brief', 'pitch', 'catchphrase', 'oneliner', 'one-liner', '标语', '副标题', '简述', '口号', '宣传语', '一句话介绍', '短描述'],
+    inputTypes: ['text'],
+    tagPreference: 'input',
   },
   {
     type: 'comment',
-    selectors: [
-      'textarea[name*="comment" i]',
-      'textarea[name*="content" i]',
-      'textarea[name*="message" i]',
-      'textarea[name*="body" i]',
-      'textarea[name*="description" i]',
-      'textarea[id*="comment" i]',
-      'textarea[id*="content" i]',
-      'textarea[id*="description" i]',
-      'textarea[placeholder*="comment" i]',
-      'textarea[placeholder*="评论" i]',
-      'textarea[placeholder*="留言" i]',
-      'textarea[placeholder*="描述" i]',
-      'div[contenteditable="true"]',
-      'textarea', // 通用 textarea 作为最后手段
-    ],
+    keywords: ['comment', 'content', 'message', 'body', 'description', 'desc', 'intro', 'summary', 'text', 'note', '评论', '留言', '描述', '简介', '内容', '介绍', '说明'],
+    tagPreference: 'textarea',
   },
 ];
+
+// ========================================
+// 评分配置
+// ========================================
+
+const SCORE_WEIGHTS = {
+  ATTRIBUTE: 40,      // 属性匹配 (id, name, class, placeholder)
+  LABEL_TEXT: 40,     // 标签/邻近文本匹配
+  TYPE_BONUS: 20,     // 类型加成
+};
+
+const MIN_SCORE_THRESHOLD = 15;  // 最低分数阈值
+
+// ========================================
+// 评分引擎 (Scoring Engine)
+// ========================================
+
+interface ScoredElement {
+  element: HTMLElement;
+  score: number;
+  matchDetails: string[];
+}
+
+/**
+ * 计算元素与字段的匹配分数
+ */
+function calculateScore(element: HTMLElement, schema: FieldSchema): ScoredElement {
+  let score = 0;
+  const matchDetails: string[] = [];
+  
+  // 1. 属性分 (40分) - 检查 id, name, class, placeholder
+  const attributeScore = calculateAttributeScore(element, schema.keywords);
+  if (attributeScore > 0) {
+    score += attributeScore;
+    matchDetails.push(`属性匹配: +${attributeScore}`);
+  }
+  
+  // 2. 邻近文本分 (40分) - 检查 label 和父元素文本
+  const labelScore = calculateLabelScore(element, schema.keywords);
+  if (labelScore > 0) {
+    score += labelScore;
+    matchDetails.push(`文本匹配: +${labelScore}`);
+  }
+  
+  // 3. 类型加成分 (20分)
+  const typeBonus = calculateTypeBonus(element, schema);
+  if (typeBonus > 0) {
+    score += typeBonus;
+    matchDetails.push(`类型加成: +${typeBonus}`);
+  }
+  
+  return { element, score, matchDetails };
+}
+
+/**
+ * 计算属性匹配分数
+ */
+function calculateAttributeScore(element: HTMLElement, keywords: string[]): number {
+  const attrs = [
+    element.id?.toLowerCase() || '',
+    element.getAttribute('name')?.toLowerCase() || '',
+    element.className?.toString().toLowerCase() || '',
+    element.getAttribute('placeholder')?.toLowerCase() || '',
+    element.getAttribute('aria-label')?.toLowerCase() || '',
+  ];
+  
+  const combinedAttrs = attrs.join(' ');
+  let matchCount = 0;
+  
+  for (const keyword of keywords) {
+    if (combinedAttrs.includes(keyword.toLowerCase())) {
+      matchCount++;
+    }
+  }
+  
+  if (matchCount === 0) return 0;
+  
+  // 根据匹配数量计算分数，最高 40 分
+  return Math.min(SCORE_WEIGHTS.ATTRIBUTE, matchCount * 15);
+}
+
+/**
+ * 计算标签/邻近文本匹配分数
+ */
+function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
+  let score = 0;
+  
+  // 1. 检查关联的 <label>
+  const id = element.id;
+  if (id) {
+    const label = document.querySelector(`label[for="${id}"]`);
+    if (label) {
+      const labelText = label.textContent?.toLowerCase() || '';
+      for (const keyword of keywords) {
+        if (labelText.includes(keyword.toLowerCase())) {
+          score += 20;
+          break;
+        }
+      }
+    }
+  }
+  
+  // 2. 检查父元素内的 label
+  const parent = element.parentElement;
+  if (parent) {
+    const parentLabel = parent.querySelector('label');
+    if (parentLabel && parentLabel !== document.querySelector(`label[for="${id}"]`)) {
+      const labelText = parentLabel.textContent?.toLowerCase() || '';
+      for (const keyword of keywords) {
+        if (labelText.includes(keyword.toLowerCase())) {
+          score += 15;
+          break;
+        }
+      }
+    }
+    
+    // 3. 检查父元素的 innerText（前50字符）
+    const parentText = parent.textContent?.slice(0, 50).toLowerCase() || '';
+    for (const keyword of keywords) {
+      if (parentText.includes(keyword.toLowerCase())) {
+        score += 10;
+        break;
+      }
+    }
+  }
+  
+  // 4. 检查前一个兄弟元素（常见的 label 位置）
+  const prevSibling = element.previousElementSibling;
+  if (prevSibling) {
+    const siblingText = prevSibling.textContent?.toLowerCase() || '';
+    for (const keyword of keywords) {
+      if (siblingText.includes(keyword.toLowerCase())) {
+        score += 10;
+        break;
+      }
+    }
+  }
+  
+  return Math.min(SCORE_WEIGHTS.LABEL_TEXT, score);
+}
+
+/**
+ * 计算类型加成分数
+ */
+function calculateTypeBonus(element: HTMLElement, schema: FieldSchema): number {
+  const tagName = element.tagName.toLowerCase();
+  const inputType = element.getAttribute('type')?.toLowerCase() || 'text';
+  
+  // textarea 偏好
+  if (schema.tagPreference === 'textarea' && tagName === 'textarea') {
+    return SCORE_WEIGHTS.TYPE_BONUS;
+  }
+  
+  // input 类型偏好
+  if (schema.tagPreference === 'input' && tagName === 'input') {
+    if (schema.inputTypes?.includes(inputType)) {
+      return SCORE_WEIGHTS.TYPE_BONUS;
+    }
+    // 即使类型不完全匹配，input 也给一半分
+    return SCORE_WEIGHTS.TYPE_BONUS / 2;
+  }
+  
+  // contenteditable 对于 comment 类型
+  if (schema.type === 'comment' && element.isContentEditable) {
+    return SCORE_WEIGHTS.TYPE_BONUS;
+  }
+  
+  return 0;
+}
+
+// ========================================
+// 字段查找 (基于评分)
+// ========================================
+
+/**
+ * 查找最匹配的表单字段
+ */
+function findBestMatch(schema: FieldSchema, excludeElements: Set<HTMLElement> = new Set()): ScoredElement | null {
+  // 获取所有可能的表单元素
+  const candidates = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+  
+  let bestMatch: ScoredElement | null = null;
+  const allScores: { element: HTMLElement; score: number; details: string[] }[] = [];
+  
+  for (const el of candidates) {
+    if (!(el instanceof HTMLElement)) continue;
+    if (excludeElements.has(el)) continue;
+    if (!isVisible(el)) continue;
+    if (isReadonly(el)) continue;
+    
+    // 排除不需要的 input 类型
+    if (el instanceof HTMLInputElement) {
+      const type = el.type.toLowerCase();
+      if (['hidden', 'submit', 'button', 'reset', 'image', 'file', 'checkbox', 'radio'].includes(type)) {
+        continue;
+      }
+    }
+    
+    const scored = calculateScore(el, schema);
+    allScores.push({ element: el, score: scored.score, details: scored.matchDetails });
+    
+    if (scored.score >= MIN_SCORE_THRESHOLD) {
+      if (!bestMatch || scored.score > bestMatch.score) {
+        bestMatch = scored;
+      }
+    }
+  }
+  
+  // 调试日志：输出所有候选元素的评分
+  console.log(`[字段识别] ${schema.type} 字段评分详情：`);
+  allScores
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .forEach(s => {
+      const el = s.element as HTMLInputElement;
+      console.log(`  - 分数: ${s.score} | 元素: <${el.tagName.toLowerCase()} name="${el.name}" id="${el.id}" type="${el.type}"> | 匹配: ${s.details.join(', ')}`);
+    });
+  
+  return bestMatch;
+}
+
+// ========================================
+// 辅助函数
+// ========================================
 
 /** 随机延迟范围 */
 const DELAY_RANGE = { min: 30, max: 80 };
 
-/**
- * 辅助函数：随机延迟
- */
 function randomDelay(): Promise<void> {
   const delay = Math.random() * (DELAY_RANGE.max - DELAY_RANGE.min) + DELAY_RANGE.min;
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
-/**
- * 查找表单字段
- */
-function findField(config: FieldConfig): HTMLElement | null {
-  // 首先尝试主选择器
-  for (const selector of config.selectors) {
-    const element = document.querySelector(selector);
-    if (element instanceof HTMLElement && isVisible(element) && !isReadonly(element)) {
-      return element;
-    }
-  }
-  
-  // 尝试后备选择器
-  if (config.fallbackSelectors) {
-    for (const selector of config.fallbackSelectors) {
-      const element = document.querySelector(selector);
-      if (element instanceof HTMLElement && isVisible(element) && !isReadonly(element)) {
-        return element;
-      }
-    }
-  }
-  
-  return null;
-}
-
-/**
- * 检查元素是否可见
- */
 function isVisible(element: HTMLElement): boolean {
   const style = window.getComputedStyle(element);
   return (
@@ -140,9 +306,6 @@ function isVisible(element: HTMLElement): boolean {
   );
 }
 
-/**
- * 检查元素是否只读
- */
 function isReadonly(element: HTMLElement): boolean {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     return element.readOnly || element.disabled;
@@ -150,29 +313,28 @@ function isReadonly(element: HTMLElement): boolean {
   return false;
 }
 
+// ========================================
+// 填充逻辑
+// ========================================
+
 /**
  * 填充单个字段
  */
 async function fillSingleField(element: HTMLElement, value: string): Promise<void> {
-  // 聚焦元素
   element.focus();
   await randomDelay();
   
-  // 根据元素类型填充
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-    // 清空现有内容
     element.value = '';
     element.dispatchEvent(new Event('input', { bubbles: true }));
     await randomDelay();
     
-    // 设置新值
     element.value = value;
     
-    // 触发事件链（模拟真实输入）
+    // 触发完整的事件链，确保 React/Vue 等框架能响应
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
     
-    // 对于 React/Vue 等框架，需要触发更多事件
     const inputEvent = new InputEvent('input', {
       bubbles: true,
       cancelable: true,
@@ -182,63 +344,60 @@ async function fillSingleField(element: HTMLElement, value: string): Promise<voi
     element.dispatchEvent(inputEvent);
     
   } else if (element.isContentEditable) {
-    // 处理 contenteditable 元素
     element.textContent = '';
     await randomDelay();
     element.textContent = value;
     
-    // 触发事件
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
   }
   
-  // 失焦
   await randomDelay();
   element.dispatchEvent(new Event('blur', { bubbles: true }));
 }
 
 /**
- * 填充表单
+ * 填充表单（使用评分算法）
  */
 export async function fillForm(data: FillData): Promise<FillResult> {
   const filledFields: string[] = [];
   const missingFields: string[] = [];
   const errors: string[] = [];
+  const usedElements = new Set<HTMLElement>();
   
-  // 字段值映射
   const fieldValues: Record<FieldType, string> = {
     url: data.url,
     email: data.email,
-    name: data.name,
+    sitename: data.sitename,
+    author: data.author,
     title: data.title,
+    tagline: data.tagline,
     comment: data.content,
   };
   
-  // 遍历所有字段配置
-  for (const config of FIELD_CONFIGS) {
-    const value = fieldValues[config.type];
+  for (const schema of FIELD_MAP) {
+    const value = fieldValues[schema.type];
     
-    // 跳过空值
-    if (!value) {
-      continue;
-    }
+    if (!value) continue;
     
     try {
-      const element = findField(config);
+      const match = findBestMatch(schema, usedElements);
       
-      if (element) {
-        await fillSingleField(element, value);
-        filledFields.push(config.type);
+      if (match) {
+        await fillSingleField(match.element, value);
+        filledFields.push(schema.type);
+        usedElements.add(match.element);
         
-        // 添加随机延迟，模拟人类行为
+        console.log(`[AI外链助手] 填充 ${schema.type}: 得分 ${match.score}`, match.matchDetails);
+        
         await randomDelay();
         await randomDelay();
       } else {
-        missingFields.push(config.type);
+        missingFields.push(schema.type);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      errors.push(`${config.type}: ${message}`);
+      errors.push(`${schema.type}: ${message}`);
     }
   }
   
@@ -250,37 +409,56 @@ export async function fillForm(data: FillData): Promise<FillResult> {
   };
 }
 
-/** 字段检测结果 */
+// ========================================
+// 表单检测
+// ========================================
+
 export interface DetectedField {
-  type: FieldType | string;
+  type: FieldType;
   name: string;
+  found: boolean;
+  score?: number;
   maxLength?: number;
   placeholder?: string;
   required?: boolean;
-  inputType?: string;
 }
 
 /**
- * 检测页面上的可填充表单（增强版：检测所有字段）
+ * 检测页面上的可填充表单（根据模式检测不同字段）
  */
-export function detectForms(): { hasForm: boolean; fields: FieldType[]; detailedFields: DetectedField[] } {
+export function detectForms(mode?: 'comment' | 'directory'): { hasForm: boolean; fields: FieldType[]; detailedFields: DetectedField[] } {
   const fields: FieldType[] = [];
   const detailedFields: DetectedField[] = [];
-  const seenElements = new Set<HTMLElement>();
+  const usedElements = new Set<HTMLElement>();
   
-  // 1. 先检测预定义的字段类型
-  for (const config of FIELD_CONFIGS) {
-    const element = findField(config);
-    if (element) {
-      fields.push(config.type);
-      seenElements.add(element);
+  // 根据模式选择要检测的字段
+  let fieldsToDetect: FieldType[];
+  if (mode === 'comment') {
+    // 评论模式：url, author(评论者), email, comment
+    fieldsToDetect = ['url', 'author', 'email', 'comment'];
+  } else {
+    // 导航站模式：url, sitename(网站名), author(联系人), email, title, tagline(简短描述), comment
+    fieldsToDetect = ['url', 'sitename', 'author', 'email', 'title', 'tagline', 'comment'];
+  }
+  
+  for (const schema of FIELD_MAP) {
+    if (!fieldsToDetect.includes(schema.type)) continue;
+    
+    const match = findBestMatch(schema, usedElements);
+    
+    const fieldInfo: DetectedField = {
+      type: schema.type,
+      name: getFieldDisplayName(schema.type),
+      found: !!match,
+      score: match?.score,
+    };
+    
+    if (match) {
+      fields.push(schema.type);
+      usedElements.add(match.element);
       
-      const fieldInfo: DetectedField = {
-        type: config.type,
-        name: getFieldDisplayName(config.type),
-      };
+      const element = match.element;
       
-      // 检测 maxlength
       const maxLength = element.getAttribute('maxlength');
       if (maxLength) {
         fieldInfo.maxLength = parseInt(maxLength, 10);
@@ -301,152 +479,46 @@ export function detectForms(): { hasForm: boolean; fields: FieldType[]; detailed
       if (element.hasAttribute('required') || element.getAttribute('aria-required') === 'true') {
         fieldInfo.required = true;
       }
-      
-      detailedFields.push(fieldInfo);
-    }
-  }
-  
-  // 2. 扫描所有表单字段，找出未识别的
-  const allInputs = document.querySelectorAll('input, textarea, select');
-  for (const el of allInputs) {
-    if (!(el instanceof HTMLElement) || seenElements.has(el)) continue;
-    if (!isVisible(el)) continue;
-    
-    const inputType = el.getAttribute('type') || 'text';
-    // 跳过不需要的类型
-    if (['hidden', 'submit', 'button', 'reset', 'image', 'file', 'checkbox', 'radio'].includes(inputType)) {
-      continue;
-    }
-    
-    const fieldName = guessFieldName(el);
-    if (!fieldName) continue;
-    
-    const fieldInfo: DetectedField = {
-      type: 'other',
-      name: fieldName,
-      inputType: el.tagName.toLowerCase() === 'textarea' ? 'textarea' : inputType,
-    };
-    
-    const maxLength = el.getAttribute('maxlength');
-    if (maxLength) {
-      fieldInfo.maxLength = parseInt(maxLength, 10);
-    }
-    
-    if (!fieldInfo.maxLength) {
-      const limitFromText = findCharLimitFromContext(el);
-      if (limitFromText) {
-        fieldInfo.maxLength = limitFromText;
-      }
-    }
-    
-    const placeholder = el.getAttribute('placeholder');
-    if (placeholder) {
-      fieldInfo.placeholder = placeholder;
-    }
-    
-    if (el.hasAttribute('required') || el.getAttribute('aria-required') === 'true') {
-      fieldInfo.required = true;
     }
     
     detailedFields.push(fieldInfo);
   }
   
   return {
-    hasForm: detailedFields.length > 0,
+    hasForm: fields.length > 0,
     fields,
     detailedFields,
   };
 }
 
-/**
- * 猜测字段名称
- */
-function guessFieldName(element: HTMLElement): string | null {
-  // 优先从 label 获取
-  const id = element.id;
-  if (id) {
-    const label = document.querySelector(`label[for="${id}"]`);
-    if (label && label.textContent) {
-      return label.textContent.trim().replace(/[*:：]$/g, '').trim();
-    }
-  }
-  
-  // 从 name 属性
-  const name = element.getAttribute('name');
-  if (name) {
-    return formatFieldName(name);
-  }
-  
-  // 从 placeholder
-  const placeholder = element.getAttribute('placeholder');
-  if (placeholder) {
-    return placeholder.slice(0, 30);
-  }
-  
-  // 从 aria-label
-  const ariaLabel = element.getAttribute('aria-label');
-  if (ariaLabel) {
-    return ariaLabel;
-  }
-  
-  // 从父元素的 label
-  const parent = element.parentElement;
-  if (parent) {
-    const parentLabel = parent.querySelector('label');
-    if (parentLabel && parentLabel.textContent) {
-      return parentLabel.textContent.trim().replace(/[*:：]$/g, '').trim();
-    }
-  }
-  
-  return null;
-}
-
-/**
- * 格式化字段名称
- */
-function formatFieldName(name: string): string {
-  return name
-    .replace(/[_-]/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .trim();
-}
-
-/**
- * 获取预定义字段的显示名称
- */
 function getFieldDisplayName(type: FieldType): string {
   const names: Record<FieldType, string> = {
     url: '网址 (URL)',
     email: '邮箱 (Email)',
-    name: '姓名 (Name)',
+    sitename: '网站名 (Site)',
+    author: '联系人 (Author)',
     title: '标题 (Title)',
-    comment: '描述/评论 (Description)',
+    tagline: '标语 (Tagline)',
+    comment: '描述 (Description)',
   };
   return names[type] || type;
 }
 
-/**
- * 从元素附近的文本中查找字数限制
- */
 function findCharLimitFromContext(element: HTMLElement): number | null {
-  // 检查父元素和兄弟元素中的提示文字
   const parent = element.parentElement;
   if (!parent) return null;
   
-  // 获取附近的文本内容
   const nearbyText = parent.textContent || '';
   
-  // 匹配常见的字数限制模式
   const patterns = [
-    /最[多长大](\d+)[字个]/,           // 最多500字、最长200个
-    /不超过(\d+)[字个]/,               // 不超过300字
-    /(\d+)[字个]以内/,                 // 500字以内
-    /(\d+)\s*characters?/i,            // 500 characters
-    /max[imum]*\s*(\d+)/i,             // max 500, maximum 500
-    /limit[ed]*\s*[to]*\s*(\d+)/i,     // limit 500, limited to 500
-    /up\s*to\s*(\d+)/i,                // up to 500
-    /(\d+)\s*char[acter]*s?\s*max/i,   // 500 chars max
+    /最[多长大](\d+)[字个]/,
+    /不超过(\d+)[字个]/,
+    /(\d+)[字个]以内/,
+    /(\d+)\s*characters?/i,
+    /max[imum]*\s*(\d+)/i,
+    /limit[ed]*\s*[to]*\s*(\d+)/i,
+    /up\s*to\s*(\d+)/i,
+    /(\d+)\s*char[acter]*s?\s*max/i,
   ];
   
   for (const pattern of patterns) {
@@ -459,7 +531,6 @@ function findCharLimitFromContext(element: HTMLElement): number | null {
     }
   }
   
-  // 检查 label 元素
   const id = element.id;
   if (id) {
     const label = document.querySelector(`label[for="${id}"]`);
@@ -477,104 +548,142 @@ function findCharLimitFromContext(element: HTMLElement): number | null {
   return null;
 }
 
-/**
- * 高亮显示已识别的表单字段（调试用）
- */
-export function highlightFields(): void {
-  for (const config of FIELD_CONFIGS) {
-    const element = findField(config);
-    if (element) {
-      element.style.outline = '2px solid #4f46e5';
-      element.style.outlineOffset = '2px';
-    }
-  }
-}
+// ========================================
+// 定位到表单
+// ========================================
 
-/**
- * 清除字段高亮
- */
-export function clearHighlights(): void {
-  for (const config of FIELD_CONFIGS) {
-    const element = findField(config);
-    if (element) {
-      element.style.outline = '';
-      element.style.outlineOffset = '';
-    }
-  }
-}
-
-/**
- * 定位到表单位置并高亮
- */
 export function scrollToForm(): { success: boolean; message: string } {
-  // 优先找评论/描述类的 textarea（最重要的字段）
-  const commentConfig = FIELD_CONFIGS.find(c => c.type === 'comment');
-  let targetElement: HTMLElement | null = null;
-
-  if (commentConfig) {
-    targetElement = findField(commentConfig);
-  }
-
-  // 如果没找到评论框，尝试找其他任意字段
-  if (!targetElement) {
-    for (const config of FIELD_CONFIGS) {
-      const element = findField(config);
-      if (element) {
-        targetElement = element;
-        break;
+  const foundElements: HTMLElement[] = [];
+  const usedElements = new Set<HTMLElement>();
+  let primaryTarget: HTMLElement | null = null;
+  
+  // 找到所有匹配的字段
+  for (const schema of FIELD_MAP) {
+    const match = findBestMatch(schema, usedElements);
+    if (match) {
+      foundElements.push(match.element);
+      usedElements.add(match.element);
+      
+      // 优先滚动到评论/描述字段
+      if (!primaryTarget && schema.type === 'comment') {
+        primaryTarget = match.element;
       }
     }
   }
-
-  // 还是没找到，尝试通用选择器
-  if (!targetElement) {
-    const genericSelectors = [
-      'textarea',
-      'input[type="text"]',
-      'input[type="email"]',
-      'input[type="url"]',
-      'div[contenteditable="true"]',
-    ];
-    
-    for (const selector of genericSelectors) {
-      const element = document.querySelector(selector);
-      if (element instanceof HTMLElement && isVisible(element)) {
-        targetElement = element;
-        break;
-      }
-    }
+  
+  // 如果没有评论字段，使用第一个找到的字段
+  if (!primaryTarget && foundElements.length > 0) {
+    primaryTarget = foundElements[0];
   }
-
-  if (targetElement) {
-    // 滚动到元素位置
-    targetElement.scrollIntoView({ 
-      behavior: 'smooth', 
-      block: 'center' 
+  
+  if (foundElements.length === 0) {
+    return { success: false, message: '未找到表单字段' };
+  }
+  
+  // 滚动到主要字段
+  if (primaryTarget) {
+    primaryTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    primaryTarget.focus();
+  }
+  
+  // 高亮所有找到的字段
+  const originalStyles = new Map<HTMLElement, { outline: string; outlineOffset: string; background: string }>();
+  
+  for (const element of foundElements) {
+    // 保存原始样式
+    originalStyles.set(element, {
+      outline: element.style.outline,
+      outlineOffset: element.style.outlineOffset,
+      background: element.style.backgroundColor,
     });
-
-    // 高亮显示
-    const originalOutline = targetElement.style.outline;
-    const originalOutlineOffset = targetElement.style.outlineOffset;
-    const originalBackground = targetElement.style.backgroundColor;
     
-    targetElement.style.outline = '3px solid #e67e22';
-    targetElement.style.outlineOffset = '4px';
-    targetElement.style.backgroundColor = '#fff8f0';
-
-    // 3秒后移除高亮
-    setTimeout(() => {
-      if (targetElement) {
-        targetElement.style.outline = originalOutline;
-        targetElement.style.outlineOffset = originalOutlineOffset;
-        targetElement.style.backgroundColor = originalBackground;
-      }
-    }, 3000);
-
-    // 聚焦
-    targetElement.focus();
-
-    return { success: true, message: '已定位到表单' };
+    // 应用高亮样式
+    element.style.outline = '3px solid #e67e22';
+    element.style.outlineOffset = '4px';
+    element.style.backgroundColor = '#fff8f0';
   }
+  
+  // 3秒后清除高亮
+  setTimeout(() => {
+    for (const element of foundElements) {
+      const original = originalStyles.get(element);
+      if (original) {
+        element.style.outline = original.outline;
+        element.style.outlineOffset = original.outlineOffset;
+        element.style.backgroundColor = original.background;
+      }
+    }
+  }, 3000);
+  
+  return { 
+    success: true, 
+    message: `已定位到 ${foundElements.length} 个表单字段` 
+  };
+}
 
-  return { success: false, message: '未找到表单' };
+// ========================================
+// 调试工具
+// ========================================
+
+export function highlightFields(): void {
+  for (const schema of FIELD_MAP) {
+    const match = findBestMatch(schema);
+    if (match) {
+      match.element.style.outline = '2px solid #4f46e5';
+      match.element.style.outlineOffset = '2px';
+      console.log(`[AI外链助手] ${schema.type}: 得分 ${match.score}`, match.matchDetails);
+    }
+  }
+}
+
+export function clearHighlights(): void {
+  const elements = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+  elements.forEach(el => {
+    if (el instanceof HTMLElement) {
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+    }
+  });
+}
+
+/**
+ * 高亮单个字段
+ */
+export function highlightSingleField(fieldType: string): { success: boolean; message: string } {
+  const schema = FIELD_MAP.find(s => s.type === fieldType);
+  if (!schema) {
+    return { success: false, message: '未知字段类型' };
+  }
+  
+  const match = findBestMatch(schema);
+  if (!match) {
+    return { success: false, message: '未找到该字段' };
+  }
+  
+  const element = match.element;
+  
+  // 滚动到字段位置
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  
+  // 保存原始样式
+  const originalOutline = element.style.outline;
+  const originalOutlineOffset = element.style.outlineOffset;
+  const originalBackground = element.style.backgroundColor;
+  
+  // 应用高亮样式
+  element.style.outline = '3px solid #e67e22';
+  element.style.outlineOffset = '4px';
+  element.style.backgroundColor = '#fff8f0';
+  
+  // 3秒后清除高亮
+  setTimeout(() => {
+    element.style.outline = originalOutline;
+    element.style.outlineOffset = originalOutlineOffset;
+    element.style.backgroundColor = originalBackground;
+  }, 3000);
+  
+  // 聚焦
+  element.focus();
+  
+  return { success: true, message: `已定位到${getFieldDisplayName(fieldType as FieldType)}` };
 }

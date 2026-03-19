@@ -6,7 +6,7 @@
 export type WorkMode = 'comment' | 'directory';
 
 /** AI 服务提供商 */
-export type AIProvider = 'deepseek' | 'openai';
+export type AIProvider = 'azure' | 'openai';
 
 /** 抓取的页面内容 */
 export interface ScrapedContent {
@@ -34,6 +34,8 @@ export interface ProjectInfo {
   keywords: string;
   /** 品牌名称 */
   brandName: string;
+  /** 网站标语（一句话介绍，用于导航站简短描述字段） */
+  tagline: string;
   /** 网站描述（用于 AI 生成内容） */
   description: string;
   /** 联系邮箱 */
@@ -46,12 +48,14 @@ export interface ProjectInfo {
 export interface APIConfig {
   /** 当前使用的 AI 提供商 */
   provider: AIProvider;
-  /** DeepSeek API Key */
-  deepseekApiKey: string;
-  /** OpenAI API Key */
-  openaiApiKey: string;
-  /** 自定义 API 端点（可选） */
-  customEndpoint?: string;
+  /** API Key */
+  apiKey: string;
+  /** Azure OpenAI 端点 */
+  azureEndpoint?: string;
+  /** Azure OpenAI 部署名称 */
+  azureDeployment?: string;
+  /** Azure API 版本 */
+  azureApiVersion?: string;
 }
 
 /** 完整存储配置 */
@@ -82,10 +86,14 @@ export interface FillData {
   url: string;
   /** 联系邮箱 */
   email: string;
-  /** 联系人名称 */
-  name: string;
-  /** 标题（品牌名或关键词） */
+  /** 网站名称/品牌名 */
+  sitename: string;
+  /** 联系人/作者名称 */
+  author: string;
+  /** 标题 */
   title: string;
+  /** 标语/简短描述 */
+  tagline: string;
   /** 评论/描述内容 */
   content: string;
 }

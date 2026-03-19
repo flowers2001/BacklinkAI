@@ -4,7 +4,7 @@
 
 import type { Message, GenerateContentMessage } from '../shared/messages';
 import { generateContent, testAPIConnection } from './ai-client';
-import { getFullConfig, saveFullConfig, saveProjectInfo } from '../shared/storage';
+import { getFullConfig, saveFullConfig, saveProjectInfo, saveAPIConfig } from '../shared/storage';
 import type { StorageConfig } from '../shared/types';
 
 console.log('[AI外链助手] Background Service Worker 已启动');
@@ -67,6 +67,11 @@ async function handleMessage(
         
       case 'SAVE_PROJECT_INFO':
         await saveProjectInfo(message.payload as Parameters<typeof saveProjectInfo>[0]);
+        sendResponse({ success: true });
+        break;
+      
+      case 'SAVE_API_CONFIG':
+        await saveAPIConfig(message.payload as Parameters<typeof saveAPIConfig>[0]);
         sendResponse({ success: true });
         break;
         

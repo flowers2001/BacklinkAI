@@ -4,7 +4,7 @@
 // ========================================
 
 import { scrapePageContent, waitForContent } from './scraper';
-import { fillForm, detectForms, scrollToForm } from './form-filler';
+import { fillForm, detectForms, scrollToForm, highlightSingleField } from './form-filler';
 import type { Message } from '../shared/messages';
 
 console.log('[AI外链助手] Content Script 已注入');
@@ -44,19 +44,25 @@ async function handleMessage(
       break;
 
     case 'DETECT_FORM':
-      const detection = detectForms();
+      const detectMsg = message as { type: 'DETECT_FORM'; payload?: { mode?: 'comment' | 'directory' } };
+      const detection = detectForms(detectMsg.payload?.mode);
       sendResponse({
         success: true,
         fields: detection.detailedFields.map(f => ({
           name: f.name,
           type: f.type,
-          found: true,
+          found: f.found,
+          score: f.score,
           maxLength: f.maxLength,
           required: f.required,
-          inputType: f.inputType,
-          placeholder: f.placeholder,
         })),
       });
+      break;
+
+    case 'HIGHLIGHT_FIELD':
+      const highlightMsg = message as { type: 'HIGHLIGHT_FIELD'; payload: { fieldType: string } };
+      const highlightResult = highlightSingleField(highlightMsg.payload.fieldType);
+      sendResponse(highlightResult);
       break;
       
     default:

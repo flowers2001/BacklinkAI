@@ -5,10 +5,9 @@ interface FormFieldInfo {
   name: string;
   type: string;
   found: boolean;
+  score?: number;
   maxLength?: number;
   required?: boolean;
-  inputType?: string;
-  placeholder?: string;
 }
 
 function App() {
@@ -27,43 +26,8 @@ function App() {
   const [editingOriginal, setEditingOriginal] = useState(false);
   const [editingChinese, setEditingChinese] = useState(false);
 
-  // 打开时自动提取/检测 + 监听标签页变化
-  useEffect(() => {
-    // 根据模式自动提取或检测
-    if (mode === 'comment') {
-      handleExtractAuto();
-    } else {
-      handleDetectFormAuto();
-    }
-
-    // 监听标签页变化
-    const handleTabChange = () => {
-      setPageContent(null);
-      setFormFields([]);
-      setOriginalComment('');
-      setChineseComment('');
-      setStatusMessage('');
-      setStatusType('idle');
-      setTimeout(() => {
-        if (mode === 'comment') {
-          handleExtractAuto();
-        } else {
-          handleDetectFormAuto();
-        }
-      }, 500);
-    };
-
-    chrome.tabs.onActivated.addListener(handleTabChange);
-    chrome.tabs.onUpdated.addListener(handleTabChange);
-    
-    return () => {
-      chrome.tabs.onActivated.removeListener(handleTabChange);
-      chrome.tabs.onUpdated.removeListener(handleTabChange);
-    };
-  }, [mode]);
-
   // 自动提取（不显示状态消息）
-  const handleExtractAuto = async () => {
+  const handleExtractAuto = useCallback(async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id || tab.url?.startsWith('chrome://')) return;
@@ -75,22 +39,54 @@ function App() {
     } catch (e) {
       // 静默失败
     }
-  };
+  }, []);
 
   // 自动检测表单（不显示状态消息）
-  const handleDetectFormAuto = async () => {
+  const handleDetectFormAuto = useCallback(async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id || tab.url?.startsWith('chrome://')) return;
 
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'DETECT_FORM' });
+      const response = await chrome.tabs.sendMessage(tab.id, { 
+        type: 'DETECT_FORM',
+        payload: { mode }
+      });
       if (response.success) {
         setFormFields(response.fields || []);
       }
     } catch (e) {
       // 静默失败
     }
-  };
+  }, [mode]);
+
+  // 打开时自动提取/检测 + 监听标签页变化
+  useEffect(() => {
+    // 两个模式都自动提取和检测
+    handleExtractAuto();
+    handleDetectFormAuto();
+
+    // 监听标签页变化
+    const handleTabChange = () => {
+      setPageContent(null);
+      setFormFields([]);
+      setOriginalComment('');
+      setChineseComment('');
+      setStatusMessage('');
+      setStatusType('idle');
+      setTimeout(() => {
+        handleExtractAuto();
+        handleDetectFormAuto();
+      }, 500);
+    };
+
+    chrome.tabs.onActivated.addListener(handleTabChange);
+    chrome.tabs.onUpdated.addListener(handleTabChange);
+    
+    return () => {
+      chrome.tabs.onActivated.removeListener(handleTabChange);
+      chrome.tabs.onUpdated.removeListener(handleTabChange);
+    };
+  }, [mode, handleExtractAuto, handleDetectFormAuto]);
 
   // 手动检测表单
   const handleDetectForm = useCallback(async () => {
@@ -102,7 +98,10 @@ function App() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('无法获取当前标签页');
 
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'DETECT_FORM' });
+      const response = await chrome.tabs.sendMessage(tab.id, { 
+        type: 'DETECT_FORM',
+        payload: { mode }
+      });
       
       if (response.success) {
         setFormFields(response.fields || []);
@@ -119,7 +118,7 @@ function App() {
     } finally {
       setIsDetecting(false);
     }
-  }, []);
+  }, [mode]);
 
   // 提取页面内容
   const handleExtract = useCallback(async () => {
@@ -235,8 +234,10 @@ function App() {
         payload: {
           url: projectInfo.targetUrl || '',
           email: projectInfo.email || '',
-          name: projectInfo.name || projectInfo.brandName || '',
-          title: projectInfo.brandName || '',
+          sitename: projectInfo.brandName || '',      // 网站名/品牌名
+          author: projectInfo.name || '',              // 联系人/作者
+          title: projectInfo.brandName || '',          // 标题
+          tagline: projectInfo.tagline || '',          // 标语/简短描述
           content: contentToFill,
         },
       });
@@ -257,7 +258,7 @@ function App() {
     } finally {
       setIsFilling(false);
     }
-  }, [originalComment, chineseComment]);
+  }, [mode, originalComment, chineseComment]);
 
   const handleOpenSettings = useCallback(() => {
     chrome.runtime.openOptionsPage();
@@ -288,6 +289,26 @@ function App() {
     await navigator.clipboard.writeText(text);
     setStatusMessage('已复制到剪贴板');
     setStatusType('success');
+  }, []);
+
+  // 高亮单个字段
+  const handleHighlightField = useCallback(async (fieldType: string) => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+
+      const response = await chrome.tabs.sendMessage(tab.id, { 
+        type: 'HIGHLIGHT_FIELD',
+        payload: { fieldType }
+      });
+      
+      if (response.success) {
+        setStatusMessage(response.message);
+        setStatusType('success');
+      }
+    } catch (error) {
+      // 静默失败
+    }
   }, []);
 
   const isLoading = isExtracting || isGenerating || isFilling;
@@ -337,35 +358,82 @@ function App() {
           </button>
         </div>
 
-        {/* 评论模式：页面内容提取区 */}
+        {/* 评论模式：左右布局 */}
         {mode === 'comment' && (
-          <div className="card page-content-card">
-            <div className="card-header">
-              <span className="card-title">页面正文</span>
-              <button 
-                className="btn btn-primary btn-sm"
-                onClick={handleExtract}
-                disabled={isExtracting}
-              >
-                {isExtracting ? '提取中...' : '提取'}
-              </button>
+          <div className="comment-layout">
+            {/* 左侧：页面内容 */}
+            <div className="card page-content-card">
+              <div className="card-header">
+                <span className="card-title">页面正文</span>
+                <button 
+                  className="btn btn-primary btn-sm"
+                  onClick={handleExtract}
+                  disabled={isExtracting}
+                >
+                  {isExtracting ? '提取中...' : '提取'}
+                </button>
+              </div>
+              <div className="card-body">
+                {pageContent ? (
+                  <div className="extracted-content">
+                    <div className="extracted-item">
+                      <span className="extracted-label">## title:</span>
+                      <span className="extracted-value">{pageContent.title}</span>
+                    </div>
+                    <div className="extracted-item">
+                      <span className="extracted-label">## content:</span>
+                      <span className="extracted-value">{pageContent.bodyText}</span>
+                    </div>
+                    <div className="char-count">{pageContent.bodyText.length}/2000</div>
+                  </div>
+                ) : (
+                  <div className="empty-hint">自动提取页面内容中...</div>
+                )}
+              </div>
             </div>
-            <div className="card-body">
-              {pageContent ? (
-                <div className="extracted-content">
-                  <div className="extracted-item">
-                    <span className="extracted-label">## title:</span>
-                    <span className="extracted-value">{pageContent.title}</span>
+
+            {/* 右侧：表单字段 */}
+            <div className="card page-content-card">
+              <div className="card-header">
+                <span className="card-title">表单字段</span>
+                <button 
+                  className="btn btn-primary btn-sm"
+                  onClick={handleDetectForm}
+                  disabled={isDetecting}
+                >
+                  {isDetecting ? '检测中...' : '检测'}
+                </button>
+              </div>
+              <div className="card-body">
+                {formFields.length > 0 ? (
+                  <div className="extracted-content">
+                    {formFields.map((field, index) => (
+                      <div 
+                        key={index} 
+                        className={`form-field-item ${field.found ? 'clickable' : ''}`}
+                        onClick={() => field.found && handleHighlightField(field.type)}
+                        title={field.found ? '点击定位到该字段' : ''}
+                      >
+                        <span className={`field-status ${field.found ? 'found' : 'not-found'}`}>
+                          {field.found ? '✓' : '✗'}
+                        </span>
+                        <span className="field-name">
+                          {field.name}
+                          {field.required && <span className="field-required">*</span>}
+                        </span>
+                        {field.found && field.score && (
+                          <span className="field-score">{field.score}分</span>
+                        )}
+                        {field.maxLength && (
+                          <span className="field-limit">≤{field.maxLength}字</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <div className="extracted-item">
-                    <span className="extracted-label">## content:</span>
-                    <span className="extracted-value">{pageContent.bodyText}</span>
-                  </div>
-                  <div className="char-count">{pageContent.bodyText.length}/2000</div>
-                </div>
-              ) : (
-                <div className="empty-hint">自动提取页面内容中...</div>
-              )}
+                ) : (
+                  <div className="empty-hint">自动检测表单字段中...</div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -387,7 +455,12 @@ function App() {
               {formFields.length > 0 ? (
                 <div className="extracted-content">
                   {formFields.map((field, index) => (
-                    <div key={index} className="form-field-item">
+                    <div 
+                      key={index} 
+                      className={`form-field-item ${field.found ? 'clickable' : ''}`}
+                      onClick={() => field.found && handleHighlightField(field.type)}
+                      title={field.found ? '点击定位到该字段' : ''}
+                    >
                       <span className={`field-status ${field.found ? 'found' : 'not-found'}`}>
                         {field.found ? '✓' : '✗'}
                       </span>
@@ -395,11 +468,9 @@ function App() {
                         {field.name}
                         {field.required && <span className="field-required">*</span>}
                       </span>
-                      <span className="field-type">
-                        {field.inputType === 'textarea' ? '文本框' : 
-                         field.type !== 'other' ? '' : 
-                         field.inputType || 'text'}
-                      </span>
+                      {field.found && field.score && (
+                        <span className="field-score">{field.score}分</span>
+                      )}
                       {field.maxLength && (
                         <span className="field-limit">≤{field.maxLength}字</span>
                       )}

@@ -3,19 +3,9 @@
 // 使用 Azure OpenAI
 // ========================================
 
-import type { ScrapedContent, WorkMode } from '../shared/types';
-import { getProjectInfo } from '../shared/storage';
+import type { ScrapedContent, WorkMode, APIConfig } from '../shared/types';
+import { getProjectInfo, getAPIConfig, DEFAULT_API_CONFIG } from '../shared/storage';
 import { buildPrompt, getSystemPrompt } from './prompts';
-
-// ========================================
-// Azure OpenAI 配置
-// ========================================
-const AZURE_CONFIG = {
-  endpoint: 'https://openai-baibei.openai.azure.com',
-  deployment: 'gpt-4.1',
-  apiKey: 'cd21199a32a8440c9bce461b7de7446b',
-  apiVersion: '2024-12-01-preview',
-};
 
 const API_TIMEOUT = 30000;
 
@@ -35,7 +25,14 @@ export async function generateContent(
   charLimit?: number
 ): Promise<DualContentResult> {
   try {
-    const projectInfo = await getProjectInfo();
+    const [projectInfo, apiConfig] = await Promise.all([
+      getProjectInfo(),
+      getAPIConfig(),
+    ]);
+    
+    if (!apiConfig.apiKey) {
+      return { success: false, error: '请先配置 API Key' };
+    }
     
     if (!projectInfo.targetUrl) {
       return { success: false, error: '请先配置推广网址' };
@@ -43,7 +40,7 @@ export async function generateContent(
     
     const userPrompt = buildPrompt(mode, pageContent, projectInfo, charLimit);
     const systemPrompt = getSystemPrompt();
-    const response = await callAzureOpenAI(systemPrompt, userPrompt);
+    const response = await callAzureOpenAI(systemPrompt, userPrompt, apiConfig);
     
     // 解析 JSON 响应
     try {
@@ -85,9 +82,14 @@ export async function generateContent(
  */
 async function callAzureOpenAI(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  config: APIConfig
 ): Promise<string> {
-  const url = `${AZURE_CONFIG.endpoint}/openai/deployments/${AZURE_CONFIG.deployment}/chat/completions?api-version=${AZURE_CONFIG.apiVersion}`;
+  const endpoint = config.azureEndpoint || DEFAULT_API_CONFIG.azureEndpoint;
+  const deployment = config.azureDeployment || DEFAULT_API_CONFIG.azureDeployment;
+  const apiVersion = config.azureApiVersion || DEFAULT_API_CONFIG.azureApiVersion;
+  
+  const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
@@ -97,7 +99,7 @@ async function callAzureOpenAI(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': AZURE_CONFIG.apiKey,
+        'api-key': config.apiKey,
       },
       body: JSON.stringify({
         messages: [
@@ -137,13 +139,23 @@ async function callAzureOpenAI(
  */
 export async function testAPIConnection(): Promise<{ success: boolean; message: string }> {
   try {
-    const url = `${AZURE_CONFIG.endpoint}/openai/deployments/${AZURE_CONFIG.deployment}/chat/completions?api-version=${AZURE_CONFIG.apiVersion}`;
+    const config = await getAPIConfig();
+    
+    if (!config.apiKey) {
+      return { success: false, message: '请先填写 API Key' };
+    }
+    
+    const endpoint = config.azureEndpoint || DEFAULT_API_CONFIG.azureEndpoint;
+    const deployment = config.azureDeployment || DEFAULT_API_CONFIG.azureDeployment;
+    const apiVersion = config.azureApiVersion || DEFAULT_API_CONFIG.azureApiVersion;
+    
+    const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': AZURE_CONFIG.apiKey,
+        'api-key': config.apiKey,
       },
       body: JSON.stringify({
         messages: [{ role: 'user', content: 'Hi' }],

@@ -107,6 +107,19 @@ body:has(.sidepanel-container) {
   flex-direction: column;
 }
 
+/* 评论模式左右布局 */
+.comment-layout {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.comment-layout .card {
+  flex: 1;
+  margin-bottom: 0;
+  min-width: 0;
+}
+
 /* 区块卡片 */
 .card {
   background: var(--bg-color);
@@ -482,6 +495,15 @@ body:has(.sidepanel-container) {
   margin-bottom: 16px;
 }
 
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row .form-group {
+  margin-bottom: 16px;
+}
+
 .form-label {
   display: block;
   font-weight: 500;
@@ -661,6 +683,19 @@ body:has(.sidepanel-container) {
   gap: 8px;
   padding: 6px 0;
   border-bottom: 1px solid var(--border-color);
+  transition: all 0.2s;
+}
+
+.form-field-item.clickable {
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 6px;
+}
+
+.form-field-item.clickable:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-color);
 }
 
 .form-field-item:last-child {
@@ -709,6 +744,14 @@ body:has(.sidepanel-container) {
 
 .field-type:empty {
   display: none;
+}
+
+.field-score {
+  font-size: 9px;
+  color: var(--success-color);
+  background: rgba(34, 197, 94, 0.1);
+  padding: 2px 5px;
+  border-radius: 4px;
 }
 
 .field-limit {
