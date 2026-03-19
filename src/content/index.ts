@@ -6,6 +6,7 @@
 import { scrapePageContent, waitForContent } from './scraper';
 import { fillForm, detectForms, scrollToForm, highlightSingleField } from './form-filler';
 import type { Message } from '../shared/messages';
+import type { FillData } from '../shared/types';
 
 console.log('[AI外链助手] Content Script 已注入');
 
@@ -39,7 +40,8 @@ async function handleMessage(
       break;
 
     case 'SCROLL_TO_FORM':
-      const scrollResult = scrollToForm();
+      const scrollMsg = message as { type: 'SCROLL_TO_FORM'; payload?: { mode?: 'comment' | 'directory' } };
+      const scrollResult = scrollToForm(scrollMsg.payload?.mode);
       sendResponse(scrollResult);
       break;
 
@@ -107,16 +109,11 @@ async function handleScrapePage(
  * 处理表单填充请求
  */
 async function handleFillForm(
-  data: Parameters<typeof fillForm>[0],
+  data: FillData & { mode?: 'comment' | 'directory' },
   sendResponse: (response: unknown) => void
 ): Promise<void> {
   try {
-    console.log('[AI外链助手] 开始填充表单...');
-    
-    const result = await fillForm(data);
-    
-    console.log('[AI外链助手] 填充完成:', result);
-    
+    const result = await fillForm(data, data.mode);
     sendResponse(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

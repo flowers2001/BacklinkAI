@@ -239,6 +239,7 @@ function App() {
           title: projectInfo.brandName || '',          // 标题
           tagline: projectInfo.tagline || '',          // 标语/简短描述
           content: contentToFill,
+          mode: mode,  // 传递当前模式
         },
       });
 
@@ -260,6 +261,51 @@ function App() {
     }
   }, [mode, originalComment, chineseComment]);
 
+  // 快速填充：只填充基础字段（URL、邮箱、网站名等），不需要 AI 生成内容
+  const handleQuickFill = useCallback(async () => {
+    setIsFilling(true);
+    setStatusMessage('正在快速填充...');
+    setStatusType('loading');
+
+    try {
+      const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+      const projectInfo = configResponse.data?.project || {};
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('无法获取标签页');
+
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'FILL_FORM',
+        payload: {
+          url: projectInfo.targetUrl || '',
+          email: projectInfo.email || '',
+          sitename: projectInfo.brandName || '',
+          author: projectInfo.name || '',
+          title: projectInfo.brandName || '',
+          tagline: projectInfo.tagline || '',
+          content: '',  // 不填充评论/描述内容
+          mode: mode,  // 传递当前模式
+        },
+      });
+
+      if (response.success) {
+        const filled = response.filledFields.length;
+        const missed = response.missingFields?.length || 0;
+        setStatusMessage(`快速填充完成！已填充 ${filled} 个字段${missed > 0 ? `，${missed} 个未找到` : ''}`);
+        setStatusType('success');
+      } else {
+        setStatusMessage('未找到可填充的表单字段');
+        setStatusType('error');
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '填充失败';
+      setStatusMessage(msg);
+      setStatusType('error');
+    } finally {
+      setIsFilling(false);
+    }
+  }, [mode]);
+
   const handleOpenSettings = useCallback(() => {
     chrome.runtime.openOptionsPage();
   }, []);
@@ -270,7 +316,10 @@ function App() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('无法获取标签页');
 
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'SCROLL_TO_FORM' });
+      const response = await chrome.tabs.sendMessage(tab.id, { 
+        type: 'SCROLL_TO_FORM',
+        payload: { mode }
+      });
       
       if (response.success) {
         setStatusMessage(response.message);
@@ -283,7 +332,7 @@ function App() {
       setStatusMessage('定位失败');
       setStatusType('error');
     }
-  }, []);
+  }, [mode]);
 
   const handleCopy = useCallback(async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -484,164 +533,332 @@ function App() {
           </div>
         )}
 
-        {/* 导航站模式：字符限制输入 */}
-        {mode === 'directory' && (
-          <div className="char-limit-input">
-            <label>字符限制：</label>
-            <input
-              type="number"
-              placeholder="留空不限制"
-              value={charLimitInput}
-              onChange={(e) => setCharLimitInput(e.target.value)}
-              disabled={isLoading}
-              min="1"
-              max="10000"
-            />
-            <span className="input-hint">英文含空格</span>
-          </div>
-        )}
-
-        {/* 状态提示 */}
-        {statusMessage && (
-          <div className={`status-bar ${statusType}`}>
-            {isLoading && <div className="spinner" />}
-            <span>{statusMessage}</span>
-          </div>
-        )}
-
-        {/* 操作按钮 */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-          <button
-            className="btn btn-primary"
-            onClick={handleGenerate}
-            disabled={isLoading || (mode === 'comment' && !pageContent)}
-            style={{ flex: 2 }}
-          >
-            {isGenerating ? (
-              <><div className="spinner" /> 生成中...</>
-            ) : (
-              <>🚀 一键生成</>
+        {/* ========== 评论模式的独立区域 ========== */}
+        {mode === 'comment' && (
+          <>
+            {/* 状态提示 */}
+            {statusMessage && (
+              <div className={`status-bar ${statusType}`}>
+                {isLoading && <div className="spinner" />}
+                <span>{statusMessage}</span>
+              </div>
             )}
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={handleScrollToForm}
-            disabled={isLoading}
-            style={{ flex: 1 }}
-            title="定位到页面表单位置"
-          >
-            📍 定位表单
-          </button>
-        </div>
 
-        {/* 评论区容器 */}
-        <div className="comments-container">
-          {/* 原评论框 */}
-          <div className="card flex-grow">
-            <div className="card-header">
-              <span className="card-title">原评论</span>
-              {originalComment && (
-                <span className={`card-badge ${charLimit && originalComment.length > charLimit ? 'over-limit' : ''}`}>
-                  {originalComment.length}{charLimit ? `/${charLimit}` : ''} 字符
-                </span>
-              )}
+            {/* 操作按钮 */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerate}
+                disabled={isLoading || !pageContent}
+                style={{ flex: 2 }}
+              >
+                {isGenerating ? (
+                  <><div className="spinner" /> 生成中...</>
+                ) : (
+                  <>🚀 生成评论</>
+                )}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleQuickFill}
+                disabled={isLoading}
+                style={{ flex: 1 }}
+                title="快速填充基础字段（URL、邮箱等）"
+              >
+                ⚡ 快速填充
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleScrollToForm}
+                disabled={isLoading}
+                style={{ flex: 1 }}
+                title="定位到页面表单位置"
+              >
+                📍 定位
+              </button>
             </div>
-            <div className="card-body">
-              {editingOriginal ? (
-                <textarea
-                  className="content-textarea"
-                  value={originalComment}
-                  onChange={(e) => setOriginalComment(e.target.value)}
-                  autoFocus
-                />
-              ) : (
-                <div className="content-box">
-                  {originalComment ? (
-                    <div className="content-box-text">{originalComment}</div>
-                  ) : (
-                    <div className="content-box-placeholder">生成后显示原文评论</div>
+
+            {/* 评论区容器 */}
+            <div className="comments-container">
+              {/* 原评论框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">原评论</span>
+                  {originalComment && (
+                    <span className="card-badge">
+                      {originalComment.length} 字符
+                    </span>
                   )}
                 </div>
-              )}
-              {originalComment && (
-                <div className="content-actions">
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setEditingOriginal(!editingOriginal)}
-                  >
-                    ✏️ {editingOriginal ? '完成' : '编辑'}
-                  </button>
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleCopy(originalComment)}
-                  >
-                    📋 复制
-                  </button>
-                  <button 
-                    className="btn btn-success btn-sm"
-                    onClick={() => handleFill(false)}
-                    disabled={isFilling}
-                  >
-                    📝 填充
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 中文评论框 */}
-          <div className="card flex-grow">
-            <div className="card-header">
-              <span className="card-title">中文评论</span>
-              {chineseComment && (
-                <span className={`card-badge ${charLimit && chineseComment.length > charLimit ? 'over-limit' : ''}`}>
-                  {chineseComment.length}{charLimit ? `/${charLimit}` : ''} 字符
-                </span>
-              )}
-            </div>
-            <div className="card-body">
-              {editingChinese ? (
-                <textarea
-                  className="content-textarea"
-                  value={chineseComment}
-                  onChange={(e) => setChineseComment(e.target.value)}
-                  autoFocus
-                />
-              ) : (
-                <div className="content-box">
-                  {chineseComment ? (
-                    <div className="content-box-text">{chineseComment}</div>
+                <div className="card-body">
+                  {editingOriginal ? (
+                    <textarea
+                      className="content-textarea"
+                      value={originalComment}
+                      onChange={(e) => setOriginalComment(e.target.value)}
+                      autoFocus
+                    />
                   ) : (
-                    <div className="content-box-placeholder">生成后显示中文版本</div>
+                    <div className="content-box">
+                      {originalComment ? (
+                        <div className="content-box-text">{originalComment}</div>
+                      ) : (
+                        <div className="content-box-placeholder">生成后显示原文评论</div>
+                      )}
+                    </div>
+                  )}
+                  {originalComment && (
+                    <div className="content-actions">
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingOriginal(!editingOriginal)}
+                      >
+                        ✏️ {editingOriginal ? '完成' : '编辑'}
+                      </button>
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleCopy(originalComment)}
+                      >
+                        📋 复制
+                      </button>
+                      <button 
+                        className="btn btn-success btn-sm"
+                        onClick={() => handleFill(false)}
+                        disabled={isFilling}
+                      >
+                        📝 填充
+                      </button>
+                    </div>
                   )}
                 </div>
-              )}
-              {chineseComment && (
-                <div className="content-actions">
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setEditingChinese(!editingChinese)}
-                  >
-                    ✏️ {editingChinese ? '完成' : '编辑'}
-                  </button>
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => handleCopy(chineseComment)}
-                  >
-                    📋 复制
-                  </button>
-                  <button 
-                    className="btn btn-success btn-sm"
-                    onClick={() => handleFill(true)}
-                    disabled={isFilling}
-                  >
-                    📝 填充
-                  </button>
+              </div>
+
+              {/* 中文评论框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">中文评论</span>
+                  {chineseComment && (
+                    <span className="card-badge">
+                      {chineseComment.length} 字符
+                    </span>
+                  )}
                 </div>
-              )}
+                <div className="card-body">
+                  {editingChinese ? (
+                    <textarea
+                      className="content-textarea"
+                      value={chineseComment}
+                      onChange={(e) => setChineseComment(e.target.value)}
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="content-box">
+                      {chineseComment ? (
+                        <div className="content-box-text">{chineseComment}</div>
+                      ) : (
+                        <div className="content-box-placeholder">生成后显示中文版本</div>
+                      )}
+                    </div>
+                  )}
+                  {chineseComment && (
+                    <div className="content-actions">
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingChinese(!editingChinese)}
+                      >
+                        ✏️ {editingChinese ? '完成' : '编辑'}
+                      </button>
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleCopy(chineseComment)}
+                      >
+                        📋 复制
+                      </button>
+                      <button 
+                        className="btn btn-success btn-sm"
+                        onClick={() => handleFill(true)}
+                        disabled={isFilling}
+                      >
+                        📝 填充
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
+
+        {/* ========== 导航站模式的独立区域 ========== */}
+        {mode === 'directory' && (
+          <>
+            {/* 字符限制输入 */}
+            <div className="char-limit-input">
+              <label>字符限制：</label>
+              <input
+                type="number"
+                placeholder="留空不限制"
+                value={charLimitInput}
+                onChange={(e) => setCharLimitInput(e.target.value)}
+                disabled={isLoading}
+                min="1"
+                max="10000"
+              />
+              <span className="input-hint">英文含空格</span>
+            </div>
+
+            {/* 状态提示 */}
+            {statusMessage && (
+              <div className={`status-bar ${statusType}`}>
+                {isLoading && <div className="spinner" />}
+                <span>{statusMessage}</span>
+              </div>
+            )}
+
+            {/* 操作按钮 */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerate}
+                disabled={isLoading}
+                style={{ flex: 2 }}
+              >
+                {isGenerating ? (
+                  <><div className="spinner" /> 生成中...</>
+                ) : (
+                  <>🚀 生成描述</>
+                )}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleQuickFill}
+                disabled={isLoading}
+                style={{ flex: 1 }}
+                title="快速填充基础字段（URL、邮箱、网站名等）"
+              >
+                ⚡ 快速填充
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleScrollToForm}
+                disabled={isLoading}
+                style={{ flex: 1 }}
+                title="定位到页面表单位置"
+              >
+                📍 定位
+              </button>
+            </div>
+
+            {/* 描述区容器 */}
+            <div className="comments-container">
+              {/* 原描述框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">网站描述</span>
+                  {originalComment && (
+                    <span className={`card-badge ${charLimit && originalComment.length > charLimit ? 'over-limit' : ''}`}>
+                      {originalComment.length}{charLimit ? `/${charLimit}` : ''} 字符
+                    </span>
+                  )}
+                </div>
+                <div className="card-body">
+                  {editingOriginal ? (
+                    <textarea
+                      className="content-textarea"
+                      value={originalComment}
+                      onChange={(e) => setOriginalComment(e.target.value)}
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="content-box">
+                      {originalComment ? (
+                        <div className="content-box-text">{originalComment}</div>
+                      ) : (
+                        <div className="content-box-placeholder">生成后显示网站描述</div>
+                      )}
+                    </div>
+                  )}
+                  {originalComment && (
+                    <div className="content-actions">
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingOriginal(!editingOriginal)}
+                      >
+                        ✏️ {editingOriginal ? '完成' : '编辑'}
+                      </button>
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleCopy(originalComment)}
+                      >
+                        📋 复制
+                      </button>
+                      <button 
+                        className="btn btn-success btn-sm"
+                        onClick={() => handleFill(false)}
+                        disabled={isFilling}
+                      >
+                        📝 填充
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 中文描述框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">中文描述</span>
+                  {chineseComment && (
+                    <span className={`card-badge ${charLimit && chineseComment.length > charLimit ? 'over-limit' : ''}`}>
+                      {chineseComment.length}{charLimit ? `/${charLimit}` : ''} 字符
+                    </span>
+                  )}
+                </div>
+                <div className="card-body">
+                  {editingChinese ? (
+                    <textarea
+                      className="content-textarea"
+                      value={chineseComment}
+                      onChange={(e) => setChineseComment(e.target.value)}
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="content-box">
+                      {chineseComment ? (
+                        <div className="content-box-text">{chineseComment}</div>
+                      ) : (
+                        <div className="content-box-placeholder">生成后显示中文版本</div>
+                      )}
+                    </div>
+                  )}
+                  {chineseComment && (
+                    <div className="content-actions">
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingChinese(!editingChinese)}
+                      >
+                        ✏️ {editingChinese ? '完成' : '编辑'}
+                      </button>
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleCopy(chineseComment)}
+                      >
+                        📋 复制
+                      </button>
+                      <button 
+                        className="btn btn-success btn-sm"
+                        onClick={() => handleFill(true)}
+                        disabled={isFilling}
+                      >
+                        📝 填充
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

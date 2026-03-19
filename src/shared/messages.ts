@@ -52,13 +52,13 @@ export type GenerateContentMessage = BaseMessage<'GENERATE_CONTENT', GenerateReq
 export type GenerateResultMessage = BaseMessage<'GENERATE_RESULT', GenerateResult>;
 
 /** 填充表单请求 */
-export type FillFormMessage = BaseMessage<'FILL_FORM', FillData>;
+export type FillFormMessage = BaseMessage<'FILL_FORM', FillData & { mode?: 'comment' | 'directory' }>;
 
 /** 填充结果响应 */
 export type FillResultMessage = BaseMessage<'FILL_RESULT', FillResult>;
 
 /** 滚动到表单请求 */
-export type ScrollToFormMessage = BaseMessage<'SCROLL_TO_FORM'>;
+export type ScrollToFormMessage = BaseMessage<'SCROLL_TO_FORM', { mode?: 'comment' | 'directory' }>;
 
 /** 检测表单字段请求 */
 export type DetectFormMessage = BaseMessage<'DETECT_FORM', { mode?: 'comment' | 'directory' }>;

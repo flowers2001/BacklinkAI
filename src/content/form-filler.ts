@@ -28,7 +28,7 @@ const FIELD_MAP: FieldSchema[] = [
   },
   {
     type: 'email',
-    keywords: ['email', 'mail', 'contact', 'e-mail', '邮箱', '邮件', '联系'],
+    keywords: ['email', 'mail', 'e-mail', '邮箱', '邮件'],
     inputTypes: ['email', 'text'],
     tagPreference: 'input',
   },
@@ -52,9 +52,9 @@ const FIELD_MAP: FieldSchema[] = [
   },
   {
     type: 'tagline',
-    keywords: ['tagline', 'slogan', 'motto', 'subtitle', 'short_desc', 'short-desc', 'short_description', 'short-description', 'brief', 'pitch', 'catchphrase', 'oneliner', 'one-liner', '标语', '副标题', '简述', '口号', '宣传语', '一句话介绍', '短描述'],
+    keywords: ['tagline', 'slogan', 'motto', 'subtitle', 'short', 'short_desc', 'short-desc', 'short_description', 'short-description', 'brief', 'pitch', 'catchphrase', 'oneliner', 'one-liner', '标语', '副标题', '简述', '口号', '宣传语', '一句话介绍', '短描述'],
     inputTypes: ['text'],
-    tagPreference: 'input',
+    tagPreference: 'any',
   },
   {
     type: 'comment',
@@ -73,7 +73,7 @@ const SCORE_WEIGHTS = {
   TYPE_BONUS: 20,     // 类型加成
 };
 
-const MIN_SCORE_THRESHOLD = 15;  // 最低分数阈值
+const MIN_SCORE_THRESHOLD = 25;  // 最低分数阈值
 
 // ========================================
 // 评分引擎 (Scoring Engine)
@@ -91,6 +91,14 @@ interface ScoredElement {
 function calculateScore(element: HTMLElement, schema: FieldSchema): ScoredElement {
   let score = 0;
   const matchDetails: string[] = [];
+  
+  const tagName = element.tagName.toLowerCase();
+  const inputType = element.getAttribute('type')?.toLowerCase() || 'text';
+  
+  // 🎯 绝对优先：精确类型匹配（999 分直接锁定）
+  if (schema.type === 'email' && tagName === 'input' && inputType === 'email') {
+    return { element, score: 999, matchDetails: ['type="email" 强制匹配'] };
+  }
   
   // 1. 属性分 (40分) - 检查 id, name, class, placeholder
   const attributeScore = calculateAttributeScore(element, schema.keywords);
@@ -111,6 +119,15 @@ function calculateScore(element: HTMLElement, schema: FieldSchema): ScoredElemen
   if (typeBonus > 0) {
     score += typeBonus;
     matchDetails.push(`类型加成: +${typeBonus}`);
+  }
+  
+  // 4. 值格式加成（针对邮箱字段）
+  if (schema.type === 'email') {
+    const value = (element as HTMLInputElement).value || '';
+    if (value.includes('@') && value.includes('.')) {
+      score += 30;
+      matchDetails.push('邮箱格式: +30');
+    }
   }
   
   return { element, score, matchDetails };
@@ -164,22 +181,29 @@ function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
     }
   }
   
-  // 2. 检查父元素内的 label
-  const parent = element.parentElement;
-  if (parent) {
-    const parentLabel = parent.querySelector('label');
-    if (parentLabel && parentLabel !== document.querySelector(`label[for="${id}"]`)) {
-      const labelText = parentLabel.textContent?.toLowerCase() || '';
+  // 2. 向上查找多层父元素中的 label（最多 5 层，应对深层嵌套的富文本编辑器）
+  let ancestor = element.parentElement;
+  let depth = 0;
+  while (ancestor && depth < 5) {
+    const ancestorLabel = ancestor.querySelector('label');
+    if (ancestorLabel) {
+      const labelText = ancestorLabel.textContent?.toLowerCase() || '';
       for (const keyword of keywords) {
         if (labelText.includes(keyword.toLowerCase())) {
-          score += 15;
+          score += (depth === 0 ? 15 : 10);  // 直接父元素给 15 分，更远的给 10 分
           break;
         }
       }
+      if (score > 0) break;  // 找到匹配就停止
     }
-    
-    // 3. 检查父元素的 innerText（前50字符）
-    const parentText = parent.textContent?.slice(0, 50).toLowerCase() || '';
+    ancestor = ancestor.parentElement;
+    depth++;
+  }
+  
+  // 3. 检查父元素的 innerText（前 100 字符）
+  const parent = element.parentElement;
+  if (parent) {
+    const parentText = parent.textContent?.slice(0, 100).toLowerCase() || '';
     for (const keyword of keywords) {
       if (parentText.includes(keyword.toLowerCase())) {
         score += 10;
@@ -210,6 +234,13 @@ function calculateTypeBonus(element: HTMLElement, schema: FieldSchema): number {
   const tagName = element.tagName.toLowerCase();
   const inputType = element.getAttribute('type')?.toLowerCase() || 'text';
   
+  // any 偏好：任何可编辑元素都给加成
+  if (schema.tagPreference === 'any') {
+    if (tagName === 'input' || tagName === 'textarea' || element.isContentEditable) {
+      return SCORE_WEIGHTS.TYPE_BONUS;
+    }
+  }
+  
   // textarea 偏好
   if (schema.tagPreference === 'textarea' && tagName === 'textarea') {
     return SCORE_WEIGHTS.TYPE_BONUS;
@@ -224,8 +255,8 @@ function calculateTypeBonus(element: HTMLElement, schema: FieldSchema): number {
     return SCORE_WEIGHTS.TYPE_BONUS / 2;
   }
   
-  // contenteditable 对于 comment 类型
-  if (schema.type === 'comment' && element.isContentEditable) {
+  // contenteditable 对于 comment 和 tagline 类型
+  if ((schema.type === 'comment' || schema.type === 'tagline') && element.isContentEditable) {
     return SCORE_WEIGHTS.TYPE_BONUS;
   }
   
@@ -359,7 +390,7 @@ async function fillSingleField(element: HTMLElement, value: string): Promise<voi
 /**
  * 填充表单（使用评分算法）
  */
-export async function fillForm(data: FillData): Promise<FillResult> {
+export async function fillForm(data: FillData, mode?: 'comment' | 'directory'): Promise<FillResult> {
   const filledFields: string[] = [];
   const missingFields: string[] = [];
   const errors: string[] = [];
@@ -375,7 +406,20 @@ export async function fillForm(data: FillData): Promise<FillResult> {
     comment: data.content,
   };
   
+  // 根据模式选择要填充的字段
+  let fieldsToFill: FieldType[];
+  if (mode === 'comment') {
+    fieldsToFill = ['url', 'author', 'email', 'comment'];
+  } else {
+    fieldsToFill = ['url', 'sitename', 'author', 'email', 'title', 'tagline', 'comment'];
+  }
+  
   for (const schema of FIELD_MAP) {
+    // 跳过不在当前模式字段列表中的字段
+    if (!fieldsToFill.includes(schema.type)) {
+      continue;
+    }
+    
     const value = fieldValues[schema.type];
     
     if (!value) continue;
@@ -552,13 +596,26 @@ function findCharLimitFromContext(element: HTMLElement): number | null {
 // 定位到表单
 // ========================================
 
-export function scrollToForm(): { success: boolean; message: string } {
+export function scrollToForm(mode?: 'comment' | 'directory'): { success: boolean; message: string } {
   const foundElements: HTMLElement[] = [];
   const usedElements = new Set<HTMLElement>();
   let primaryTarget: HTMLElement | null = null;
   
+  // 根据模式选择要检测的字段
+  let fieldsToDetect: FieldType[];
+  if (mode === 'comment') {
+    fieldsToDetect = ['url', 'author', 'email', 'comment'];
+  } else {
+    fieldsToDetect = ['url', 'sitename', 'author', 'email', 'title', 'tagline', 'comment'];
+  }
+  
   // 找到所有匹配的字段
   for (const schema of FIELD_MAP) {
+    // 跳过不在当前模式字段列表中的字段
+    if (!fieldsToDetect.includes(schema.type)) {
+      continue;
+    }
+    
     const match = findBestMatch(schema, usedElements);
     if (match) {
       foundElements.push(match.element);
