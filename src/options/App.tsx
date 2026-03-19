@@ -5,6 +5,7 @@ const DEFAULT_PROJECT_INFO: ProjectInfo = {
   targetUrl: '',
   keywords: '',
   brandName: '',
+  title: '',
   tagline: '',
   description: '',
   email: '',
@@ -163,47 +164,6 @@ function App() {
           />
         </div>
         
-        <div className="form-group">
-          <label className="form-label">
-            Azure 端点
-            <span className="form-label-hint"> - Azure OpenAI 资源端点</span>
-          </label>
-          <input
-            type="url"
-            className="form-input"
-            value={apiConfig.azureEndpoint}
-            onChange={(e) => setApiConfig({ ...apiConfig, azureEndpoint: e.target.value })}
-            placeholder="https://your-resource.openai.azure.com"
-          />
-        </div>
-        
-        <div className="form-row">
-          <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">
-              部署名称
-            </label>
-            <input
-              type="text"
-              className="form-input"
-              value={apiConfig.azureDeployment}
-              onChange={(e) => setApiConfig({ ...apiConfig, azureDeployment: e.target.value })}
-              placeholder="gpt-4.1"
-            />
-          </div>
-          <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">
-              API 版本
-            </label>
-            <input
-              type="text"
-              className="form-input"
-              value={apiConfig.azureApiVersion}
-              onChange={(e) => setApiConfig({ ...apiConfig, azureApiVersion: e.target.value })}
-              placeholder="2024-12-01-preview"
-            />
-          </div>
-        </div>
-        
         <div className="action-bar" style={{ gap: '12px' }}>
           <button
             className="btn btn-primary"
@@ -231,7 +191,7 @@ function App() {
         <div className="form-group">
           <label className="form-label">
             推广网址 <span style={{ color: '#ef4444' }}>*</span>
-            <span className="form-label-hint"> - 你要推广的落地页地址</span>
+            <span className="form-label-hint"> - 自动填充到表单的"URL"字段，同时用于 AI 生成</span>
           </label>
           <input
             type="url"
@@ -245,7 +205,7 @@ function App() {
         <div className="form-group">
           <label className="form-label">
             核心关键词
-            <span className="form-label-hint"> - 希望在外链中锚定的关键词</span>
+            <span className="form-label-hint"> - 用于 AI 生成内容时融入关键词（不直接填入表单）</span>
           </label>
           <input
             type="text"
@@ -259,7 +219,7 @@ function App() {
         <div className="form-group">
           <label className="form-label">
             品牌名称
-            <span className="form-label-hint"> - 你的公司或网站名称</span>
+            <span className="form-label-hint"> - 自动填充到表单的"网站名/产品名"字段</span>
           </label>
           <input
             type="text"
@@ -272,8 +232,22 @@ function App() {
         
         <div className="form-group">
           <label className="form-label">
+            网站标题
+            <span className="form-label-hint"> - 自动填充到表单的"title/标题"字段</span>
+          </label>
+          <input
+            type="text"
+            className="form-input"
+            value={projectInfo.title}
+            onChange={(e) => setProjectInfo({ ...projectInfo, title: e.target.value })}
+            placeholder="例如：Open Claw - 开源爬虫平台"
+          />
+        </div>
+        
+        <div className="form-group">
+          <label className="form-label">
             网站标语
-            <span className="form-label-hint"> - 一句话介绍（用于导航站简短描述字段）</span>
+            <span className="form-label-hint"> - 自动填充到表单的"tagline/简短描述"字段</span>
           </label>
           <input
             type="text"
@@ -287,7 +261,7 @@ function App() {
         <div className="form-group">
           <label className="form-label">
             网站描述 <span style={{ color: '#ef4444' }}>*</span>
-            <span className="form-label-hint"> - AI 会根据此描述生成内容</span>
+            <span className="form-label-hint"> - 仅供 AI 生成内容时参考（不直接填入表单）</span>
           </label>
           <textarea
             className="form-input form-textarea"
@@ -303,7 +277,7 @@ function App() {
         <div className="form-group">
           <label className="form-label">
             联系邮箱 <span style={{ color: '#ef4444' }}>*</span>
-            <span className="form-label-hint"> - 用于自动填充表单</span>
+            <span className="form-label-hint"> - 自动填充到表单的"邮箱"字段</span>
           </label>
           <input
             type="email"
@@ -317,7 +291,7 @@ function App() {
         <div className="form-group">
           <label className="form-label">
             联系人名称
-            <span className="form-label-hint"> - 用于自动填充姓名/作者字段</span>
+            <span className="form-label-hint"> - 自动填充到表单的"姓名/作者"字段</span>
           </label>
           <input
             type="text"

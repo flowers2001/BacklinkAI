@@ -34,7 +34,7 @@ const FIELD_MAP: FieldSchema[] = [
   },
   {
     type: 'sitename',
-    keywords: ['sitename', 'site_name', 'site-name', 'websitename', 'website_name', 'webname', 'web_name', 'project', 'projectname', 'project_name', 'project-name', 'brand', 'company', 'organization', 'appname', 'app_name', 'app-name', 'productname', 'product_name', '网站名', '站点名', '品牌', '公司', '企业', '项目名', '应用名', '产品名'],
+    keywords: ['sitename', 'site_name', 'site-name', 'websitename', 'website_name', 'webname', 'web_name', 'project', 'projectname', 'project_name', 'project-name', 'product', 'productname', 'product_name', 'product-name', 'brand', 'appname', 'app_name', 'app-name', '网站名', '站点名', '品牌', '项目名', '应用名', '产品名'],
     inputTypes: ['text'],
     tagPreference: 'input',
   },

@@ -34,6 +34,8 @@ export interface ProjectInfo {
   keywords: string;
   /** 品牌名称 */
   brandName: string;
+  /** 网站标题（用于表单 title 字段） */
+  title: string;
   /** 网站标语（一句话介绍，用于导航站简短描述字段） */
   tagline: string;
   /** 网站描述（用于 AI 生成内容） */

@@ -156,7 +156,7 @@ export function useAIGenerate(): UseAIGenerateReturn {
         email: projectInfo.email,
         sitename: projectInfo.brandName || '',
         author: projectInfo.name || '',
-        title: projectInfo.brandName || projectInfo.keywords,
+        title: projectInfo.title || '',
         tagline: projectInfo.tagline || '',
         content: content,
       };

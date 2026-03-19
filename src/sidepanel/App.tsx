@@ -236,7 +236,7 @@ function App() {
           email: projectInfo.email || '',
           sitename: projectInfo.brandName || '',      // 网站名/品牌名
           author: projectInfo.name || '',              // 联系人/作者
-          title: projectInfo.brandName || '',          // 标题
+          title: projectInfo.title || '',              // 网站标题
           tagline: projectInfo.tagline || '',          // 标语/简短描述
           content: contentToFill,
           mode: mode,  // 传递当前模式
@@ -281,7 +281,7 @@ function App() {
           email: projectInfo.email || '',
           sitename: projectInfo.brandName || '',
           author: projectInfo.name || '',
-          title: projectInfo.brandName || '',
+          title: projectInfo.title || '',
           tagline: projectInfo.tagline || '',
           content: '',  // 不填充评论/描述内容
           mode: mode,  // 传递当前模式
