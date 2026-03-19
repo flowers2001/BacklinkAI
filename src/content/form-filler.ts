@@ -34,13 +34,13 @@ const FIELD_MAP: FieldSchema[] = [
   },
   {
     type: 'sitename',
-    keywords: ['sitename', 'site_name', 'site-name', 'websitename', 'website_name', 'webname', 'web_name', 'project', 'projectname', 'project_name', 'project-name', 'product', 'productname', 'product_name', 'product-name', 'brand', 'appname', 'app_name', 'app-name', '网站名', '站点名', '品牌', '项目名', '应用名', '产品名'],
+    keywords: ['sitename', 'site_name', 'site-name', 'websitename', 'website_name', 'webname', 'web_name', 'project', 'projectname', 'project_name', 'project-name', 'product', 'productname', 'product_name', 'product-name', 'brand', 'appname', 'app_name', 'app-name', 'startup', 'startupname', '网站名', '站点名', '品牌', '项目名', '应用名', '产品名', '创业', '创业公司'],
     inputTypes: ['text'],
     tagPreference: 'input',
   },
   {
     type: 'author',
-    keywords: ['author', 'owner', 'creator', 'submitter', 'publisher', 'contributor', 'your_name', 'your-name', 'yourname', 'fullname', 'full_name', 'full-name', '作者', '所有者', '创建者', '提交者', '发布者'],
+    keywords: ['name', 'author', 'owner', 'creator', 'submitter', 'publisher', 'contributor', 'your_name', 'your-name', 'yourname', 'fullname', 'full_name', 'full-name', '姓名', '作者', '所有者', '创建者', '提交者', '发布者'],
     inputTypes: ['text'],
     tagPreference: 'input',
   },
@@ -145,13 +145,33 @@ function calculateAttributeScore(element: HTMLElement, keywords: string[]): numb
     element.getAttribute('aria-label')?.toLowerCase() || '',
   ];
   
-  const combinedAttrs = attrs.join(' ');
+  // 超级泛用词：必须完全相等才给分（防止 "Project Name" 匹配到 name）
+  const EXACT_MATCH_WORDS = ['name'];
+  
   let matchCount = 0;
   
   for (const keyword of keywords) {
-    if (combinedAttrs.includes(keyword.toLowerCase())) {
-      matchCount++;
+    const lowerKeyword = keyword.toLowerCase();
+    const requiresExact = EXACT_MATCH_WORDS.includes(lowerKeyword);
+    
+    for (const attrValue of attrs) {
+      if (!attrValue) continue;
+      
+      let matched = false;
+      if (requiresExact) {
+        // 超级泛用词：只有属性值完全等于关键词才匹配
+        matched = attrValue === lowerKeyword;
+      } else {
+        // 其他词：保持原有的 includes 逻辑
+        matched = attrValue.includes(lowerKeyword);
+      }
+      
+      if (matched) {
+        matchCount++;
+        break;
+      }
     }
+    if (matchCount > 0) break;
   }
   
   if (matchCount === 0) return 0;
