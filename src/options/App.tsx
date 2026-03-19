@@ -5,6 +5,7 @@ const DEFAULT_PROJECT_INFO: ProjectInfo = {
   targetUrl: '',
   keywords: '',
   brandName: '',
+  description: '',
   email: '',
   name: '',
 };
@@ -159,6 +160,20 @@ function App() {
             value={projectInfo.brandName}
             onChange={(e) => setProjectInfo({ ...projectInfo, brandName: e.target.value })}
             placeholder="你的品牌名"
+          />
+        </div>
+        
+        <div className="form-group">
+          <label className="form-label">
+            网站描述 <span style={{ color: '#ef4444' }}>*</span>
+            <span className="form-label-hint"> - AI 会根据此描述生成内容</span>
+          </label>
+          <textarea
+            className="form-input form-textarea"
+            value={projectInfo.description}
+            onChange={(e) => setProjectInfo({ ...projectInfo, description: e.target.value })}
+            placeholder="简要描述你的网站是做什么的、有什么特点、目标用户是谁&#10;例如：ExtractAny 是一款 AI 数据提取工具，可以从网页和表单中批量提取结构化数据，适合需要数据采集的企业和开发者。"
+            rows={4}
           />
         </div>
         

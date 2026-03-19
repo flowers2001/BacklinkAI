@@ -31,7 +31,8 @@ export interface DualContentResult {
  */
 export async function generateContent(
   mode: WorkMode,
-  pageContent: ScrapedContent
+  pageContent: ScrapedContent | null,
+  charLimit?: number
 ): Promise<DualContentResult> {
   try {
     const projectInfo = await getProjectInfo();
@@ -40,7 +41,7 @@ export async function generateContent(
       return { success: false, error: '请先配置推广网址' };
     }
     
-    const userPrompt = buildPrompt(mode, pageContent, projectInfo);
+    const userPrompt = buildPrompt(mode, pageContent, projectInfo, charLimit);
     const systemPrompt = getSystemPrompt();
     const response = await callAzureOpenAI(systemPrompt, userPrompt);
     

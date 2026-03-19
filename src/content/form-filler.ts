@@ -250,23 +250,231 @@ export async function fillForm(data: FillData): Promise<FillResult> {
   };
 }
 
+/** 字段检测结果 */
+export interface DetectedField {
+  type: FieldType | string;
+  name: string;
+  maxLength?: number;
+  placeholder?: string;
+  required?: boolean;
+  inputType?: string;
+}
+
 /**
- * 检测页面上的可填充表单
+ * 检测页面上的可填充表单（增强版：检测所有字段）
  */
-export function detectForms(): { hasForm: boolean; fields: FieldType[] } {
+export function detectForms(): { hasForm: boolean; fields: FieldType[]; detailedFields: DetectedField[] } {
   const fields: FieldType[] = [];
+  const detailedFields: DetectedField[] = [];
+  const seenElements = new Set<HTMLElement>();
   
+  // 1. 先检测预定义的字段类型
   for (const config of FIELD_CONFIGS) {
     const element = findField(config);
     if (element) {
       fields.push(config.type);
+      seenElements.add(element);
+      
+      const fieldInfo: DetectedField = {
+        type: config.type,
+        name: getFieldDisplayName(config.type),
+      };
+      
+      // 检测 maxlength
+      const maxLength = element.getAttribute('maxlength');
+      if (maxLength) {
+        fieldInfo.maxLength = parseInt(maxLength, 10);
+      }
+      
+      if (!fieldInfo.maxLength) {
+        const limitFromText = findCharLimitFromContext(element);
+        if (limitFromText) {
+          fieldInfo.maxLength = limitFromText;
+        }
+      }
+      
+      const placeholder = element.getAttribute('placeholder');
+      if (placeholder) {
+        fieldInfo.placeholder = placeholder;
+      }
+      
+      if (element.hasAttribute('required') || element.getAttribute('aria-required') === 'true') {
+        fieldInfo.required = true;
+      }
+      
+      detailedFields.push(fieldInfo);
     }
   }
   
+  // 2. 扫描所有表单字段，找出未识别的
+  const allInputs = document.querySelectorAll('input, textarea, select');
+  for (const el of allInputs) {
+    if (!(el instanceof HTMLElement) || seenElements.has(el)) continue;
+    if (!isVisible(el)) continue;
+    
+    const inputType = el.getAttribute('type') || 'text';
+    // 跳过不需要的类型
+    if (['hidden', 'submit', 'button', 'reset', 'image', 'file', 'checkbox', 'radio'].includes(inputType)) {
+      continue;
+    }
+    
+    const fieldName = guessFieldName(el);
+    if (!fieldName) continue;
+    
+    const fieldInfo: DetectedField = {
+      type: 'other',
+      name: fieldName,
+      inputType: el.tagName.toLowerCase() === 'textarea' ? 'textarea' : inputType,
+    };
+    
+    const maxLength = el.getAttribute('maxlength');
+    if (maxLength) {
+      fieldInfo.maxLength = parseInt(maxLength, 10);
+    }
+    
+    if (!fieldInfo.maxLength) {
+      const limitFromText = findCharLimitFromContext(el);
+      if (limitFromText) {
+        fieldInfo.maxLength = limitFromText;
+      }
+    }
+    
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder) {
+      fieldInfo.placeholder = placeholder;
+    }
+    
+    if (el.hasAttribute('required') || el.getAttribute('aria-required') === 'true') {
+      fieldInfo.required = true;
+    }
+    
+    detailedFields.push(fieldInfo);
+  }
+  
   return {
-    hasForm: fields.length > 0,
+    hasForm: detailedFields.length > 0,
     fields,
+    detailedFields,
   };
+}
+
+/**
+ * 猜测字段名称
+ */
+function guessFieldName(element: HTMLElement): string | null {
+  // 优先从 label 获取
+  const id = element.id;
+  if (id) {
+    const label = document.querySelector(`label[for="${id}"]`);
+    if (label && label.textContent) {
+      return label.textContent.trim().replace(/[*:：]$/g, '').trim();
+    }
+  }
+  
+  // 从 name 属性
+  const name = element.getAttribute('name');
+  if (name) {
+    return formatFieldName(name);
+  }
+  
+  // 从 placeholder
+  const placeholder = element.getAttribute('placeholder');
+  if (placeholder) {
+    return placeholder.slice(0, 30);
+  }
+  
+  // 从 aria-label
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel) {
+    return ariaLabel;
+  }
+  
+  // 从父元素的 label
+  const parent = element.parentElement;
+  if (parent) {
+    const parentLabel = parent.querySelector('label');
+    if (parentLabel && parentLabel.textContent) {
+      return parentLabel.textContent.trim().replace(/[*:：]$/g, '').trim();
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * 格式化字段名称
+ */
+function formatFieldName(name: string): string {
+  return name
+    .replace(/[_-]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
+}
+
+/**
+ * 获取预定义字段的显示名称
+ */
+function getFieldDisplayName(type: FieldType): string {
+  const names: Record<FieldType, string> = {
+    url: '网址 (URL)',
+    email: '邮箱 (Email)',
+    name: '姓名 (Name)',
+    title: '标题 (Title)',
+    comment: '描述/评论 (Description)',
+  };
+  return names[type] || type;
+}
+
+/**
+ * 从元素附近的文本中查找字数限制
+ */
+function findCharLimitFromContext(element: HTMLElement): number | null {
+  // 检查父元素和兄弟元素中的提示文字
+  const parent = element.parentElement;
+  if (!parent) return null;
+  
+  // 获取附近的文本内容
+  const nearbyText = parent.textContent || '';
+  
+  // 匹配常见的字数限制模式
+  const patterns = [
+    /最[多长大](\d+)[字个]/,           // 最多500字、最长200个
+    /不超过(\d+)[字个]/,               // 不超过300字
+    /(\d+)[字个]以内/,                 // 500字以内
+    /(\d+)\s*characters?/i,            // 500 characters
+    /max[imum]*\s*(\d+)/i,             // max 500, maximum 500
+    /limit[ed]*\s*[to]*\s*(\d+)/i,     // limit 500, limited to 500
+    /up\s*to\s*(\d+)/i,                // up to 500
+    /(\d+)\s*char[acter]*s?\s*max/i,   // 500 chars max
+  ];
+  
+  for (const pattern of patterns) {
+    const match = nearbyText.match(pattern);
+    if (match && match[1]) {
+      const limit = parseInt(match[1], 10);
+      if (limit > 0 && limit < 100000) {
+        return limit;
+      }
+    }
+  }
+  
+  // 检查 label 元素
+  const id = element.id;
+  if (id) {
+    const label = document.querySelector(`label[for="${id}"]`);
+    if (label) {
+      const labelText = label.textContent || '';
+      for (const pattern of patterns) {
+        const match = labelText.match(pattern);
+        if (match && match[1]) {
+          return parseInt(match[1], 10);
+        }
+      }
+    }
+  }
+  
+  return null;
 }
 
 /**

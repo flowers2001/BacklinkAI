@@ -39,14 +39,31 @@ async function handleMessage(
       break;
 
     case 'SCROLL_TO_FORM':
-      const result = scrollToForm();
-      sendResponse(result);
+      const scrollResult = scrollToForm();
+      sendResponse(scrollResult);
+      break;
+
+    case 'DETECT_FORM':
+      const detection = detectForms();
+      sendResponse({
+        success: true,
+        fields: detection.detailedFields.map(f => ({
+          name: f.name,
+          type: f.type,
+          found: true,
+          maxLength: f.maxLength,
+          required: f.required,
+          inputType: f.inputType,
+          placeholder: f.placeholder,
+        })),
+      });
       break;
       
     default:
       console.warn('[AI外链助手] 未知消息类型:', message);
   }
 }
+
 
 /**
  * 处理页面抓取请求

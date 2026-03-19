@@ -34,6 +34,8 @@ export interface ProjectInfo {
   keywords: string;
   /** 品牌名称 */
   brandName: string;
+  /** 网站描述（用于 AI 生成内容） */
+  description: string;
   /** 联系邮箱 */
   email: string;
   /** 联系人名称 */
@@ -61,8 +63,10 @@ export interface StorageConfig {
 /** AI 生成请求参数 */
 export interface GenerateRequest {
   mode: WorkMode;
-  pageContent: ScrapedContent;
+  pageContent: ScrapedContent | null;
   projectInfo: ProjectInfo;
+  /** 字数限制（导航站模式） */
+  charLimit?: number;
 }
 
 /** AI 生成结果 */

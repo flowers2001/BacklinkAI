@@ -42,6 +42,7 @@ export const DEFAULT_PROJECT_INFO: ProjectInfo = {
   targetUrl: '',
   keywords: '',
   brandName: '',
+  description: '',
   email: '',
   name: '',
 };

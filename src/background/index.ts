@@ -47,7 +47,11 @@ async function handleMessage(
     switch (message.type) {
       case 'GENERATE_CONTENT':
         const genMsg = message as GenerateContentMessage;
-        const result = await generateContent(genMsg.payload.mode, genMsg.payload.pageContent);
+        const result = await generateContent(
+          genMsg.payload.mode, 
+          genMsg.payload.pageContent,
+          genMsg.payload.charLimit
+        );
         sendResponse(result);
         break;
         
