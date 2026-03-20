@@ -13,10 +13,12 @@
     "storage",
     "activeTab",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "identity"
   ],
   "host_permissions": [
     "https://openai-baibei.openai.azure.com/*",
+    "https://*.supabase.co/*",
     "<all_urls>"
   ],
   "action": {

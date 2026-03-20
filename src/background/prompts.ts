@@ -102,7 +102,7 @@ ${mainHeading ? `- 主标题：${mainHeading}` : ''}
 }
 
 ## 评论要求
-1. 字数：50-100字
+1. 字数：100-200字
 2. 语气自然真诚，像真正阅读过文章的读者
 3. 结合文章内容和你的网站背景，分享相关经验或见解
 4. **必须在评论中自然地附带网站链接 ${projectInfo.targetUrl}**
@@ -151,7 +151,7 @@ function buildDirectoryPrompt(
 基于上述网站信息，生成适合提交到导航站的描述。用 JSON 格式返回：
 
 {
-  "original": "英文版本（简短精炼）",
+  "original": "英文版本",
   "chinese": "中文版本"
 }
 

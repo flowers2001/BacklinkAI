@@ -40,7 +40,7 @@ const FIELD_MAP: FieldSchema[] = [
   },
   {
     type: 'author',
-    keywords: ['name', 'author', 'owner', 'creator', 'submitter', 'publisher', 'contributor', 'your_name', 'your-name', 'yourname', 'fullname', 'full_name', 'full-name', '姓名', '作者', '所有者', '创建者', '提交者', '发布者'],
+    keywords: ['user', 'name', 'author', 'owner', 'creator', 'submitter', 'publisher', 'contributor', 'your_name', 'your-name', 'yourname', 'fullname', 'full_name', 'full-name', '姓名', '作者', '所有者', '创建者', '提交者', '发布者'],
     inputTypes: ['text'],
     tagPreference: 'input',
   },
@@ -95,11 +95,6 @@ function calculateScore(element: HTMLElement, schema: FieldSchema): ScoredElemen
   const tagName = element.tagName.toLowerCase();
   const inputType = element.getAttribute('type')?.toLowerCase() || 'text';
   
-  // 🎯 绝对优先：精确类型匹配（999 分直接锁定）
-  if (schema.type === 'email' && tagName === 'input' && inputType === 'email') {
-    return { element, score: 999, matchDetails: ['type="email" 强制匹配'] };
-  }
-  
   // 1. 属性分 (40分) - 检查 id, name, class, placeholder
   const attributeScore = calculateAttributeScore(element, schema.keywords);
   if (attributeScore > 0) {
@@ -121,7 +116,13 @@ function calculateScore(element: HTMLElement, schema: FieldSchema): ScoredElemen
     matchDetails.push(`类型加成: +${typeBonus}`);
   }
   
-  // 4. 值格式加成（针对邮箱字段）
+  // 4. 精确类型匹配加成 (30分) - 优先但不绝对
+  if (schema.type === 'email' && tagName === 'input' && inputType === 'email') {
+    score += 30;
+    matchDetails.push('type="email" 精确匹配: +30');
+  }
+  
+  // 5. 值格式加成（针对邮箱字段）
   if (schema.type === 'email') {
     const value = (element as HTMLInputElement).value || '';
     if (value.includes('@') && value.includes('.')) {
@@ -148,7 +149,7 @@ function calculateAttributeScore(element: HTMLElement, keywords: string[]): numb
   // 超级泛用词：必须完全相等才给分（防止 "Project Name" 匹配到 name）
   const EXACT_MATCH_WORDS = ['name'];
   
-  let matchCount = 0;
+  let bestScore = 0;
   
   for (const keyword of keywords) {
     const lowerKeyword = keyword.toLowerCase();
@@ -157,27 +158,25 @@ function calculateAttributeScore(element: HTMLElement, keywords: string[]): numb
     for (const attrValue of attrs) {
       if (!attrValue) continue;
       
-      let matched = false;
       if (requiresExact) {
-        // 超级泛用词：只有属性值完全等于关键词才匹配
-        matched = attrValue === lowerKeyword;
+        // 超级泛用词：只有完全相等才匹配
+        if (attrValue === lowerKeyword) {
+          bestScore = Math.max(bestScore, SCORE_WEIGHTS.ATTRIBUTE); // 满分 40
+        }
       } else {
-        // 其他词：保持原有的 includes 逻辑
-        matched = attrValue.includes(lowerKeyword);
-      }
-      
-      if (matched) {
-        matchCount++;
-        break;
+        // 其他词：区分完全匹配和部分匹配
+        if (attrValue === lowerKeyword) {
+          // 完全匹配：满分 40 (如 name="email")
+          bestScore = Math.max(bestScore, SCORE_WEIGHTS.ATTRIBUTE);
+        } else if (attrValue.includes(lowerKeyword)) {
+          // 部分匹配：15 分 (如 name="fields[email]")
+          bestScore = Math.max(bestScore, 15);
+        }
       }
     }
-    if (matchCount > 0) break;
   }
   
-  if (matchCount === 0) return 0;
-  
-  // 根据匹配数量计算分数，最高 40 分
-  return Math.min(SCORE_WEIGHTS.ATTRIBUTE, matchCount * 15);
+  return bestScore;
 }
 
 /**
@@ -186,6 +185,23 @@ function calculateAttributeScore(element: HTMLElement, keywords: string[]): numb
 function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
   let score = 0;
   
+  // 超级泛用词：必须 label 文本完全相等才给分（防止 "Project Name"、"Startup Name" 等所有带前缀的误匹配）
+  const EXACT_LABEL_WORDS = ['name', '姓名'];
+  
+  // 辅助函数：检查文本是否匹配关键词
+  const textMatches = (text: string, keyword: string): boolean => {
+    const lowerKeyword = keyword.toLowerCase();
+    const requiresExact = EXACT_LABEL_WORDS.includes(lowerKeyword);
+    
+    if (requiresExact) {
+      // 超级泛用词：label 文本完全相等才匹配（去除首尾空格和换行）
+      const cleanText = text.trim().toLowerCase();
+      return cleanText === lowerKeyword;
+    } else {
+      return text.includes(lowerKeyword);
+    }
+  };
+  
   // 1. 检查关联的 <label>
   const id = element.id;
   if (id) {
@@ -193,7 +209,7 @@ function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
     if (label) {
       const labelText = label.textContent?.toLowerCase() || '';
       for (const keyword of keywords) {
-        if (labelText.includes(keyword.toLowerCase())) {
+        if (textMatches(labelText, keyword)) {
           score += 20;
           break;
         }
@@ -209,7 +225,7 @@ function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
     if (ancestorLabel) {
       const labelText = ancestorLabel.textContent?.toLowerCase() || '';
       for (const keyword of keywords) {
-        if (labelText.includes(keyword.toLowerCase())) {
+        if (textMatches(labelText, keyword)) {
           score += (depth === 0 ? 15 : 10);  // 直接父元素给 15 分，更远的给 10 分
           break;
         }
@@ -225,7 +241,7 @@ function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
   if (parent) {
     const parentText = parent.textContent?.slice(0, 100).toLowerCase() || '';
     for (const keyword of keywords) {
-      if (parentText.includes(keyword.toLowerCase())) {
+      if (textMatches(parentText, keyword)) {
         score += 10;
         break;
       }
@@ -237,7 +253,7 @@ function calculateLabelScore(element: HTMLElement, keywords: string[]): number {
   if (prevSibling) {
     const siblingText = prevSibling.textContent?.toLowerCase() || '';
     for (const keyword of keywords) {
-      if (siblingText.includes(keyword.toLowerCase())) {
+      if (textMatches(siblingText, keyword)) {
         score += 10;
         break;
       }
@@ -303,6 +319,9 @@ function findBestMatch(schema: FieldSchema, excludeElements: Set<HTMLElement> = 
     if (!isVisible(el)) continue;
     if (isReadonly(el)) continue;
     
+    // 排除订阅框（subscribe/newsletter）
+    if (isSubscriptionField(el)) continue;
+    
     // 排除不需要的 input 类型
     if (el instanceof HTMLInputElement) {
       const type = el.type.toLowerCase();
@@ -361,6 +380,43 @@ function isReadonly(element: HTMLElement): boolean {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     return element.readOnly || element.disabled;
   }
+  return false;
+}
+
+/**
+ * 检测是否为订阅/Newsletter 字段（需要排除）
+ */
+function isSubscriptionField(element: HTMLElement): boolean {
+  const subscribeKeywords = ['subscribe', 'subscription', 'newsletter', 'jetpack'];
+  
+  // 检查元素自身的属性
+  const elementText = [
+    element.id?.toLowerCase() || '',
+    element.getAttribute('name')?.toLowerCase() || '',
+    element.className?.toString().toLowerCase() || '',
+  ].join(' ');
+  
+  if (subscribeKeywords.some(keyword => elementText.includes(keyword))) {
+    return true;
+  }
+  
+  // 检查父元素（最多向上3层）
+  let parent = element.parentElement;
+  let depth = 0;
+  while (parent && depth < 3) {
+    const parentText = [
+      parent.id?.toLowerCase() || '',
+      parent.className?.toString().toLowerCase() || '',
+    ].join(' ');
+    
+    if (subscribeKeywords.some(keyword => parentText.includes(keyword))) {
+      return true;
+    }
+    
+    parent = parent.parentElement;
+    depth++;
+  }
+  
   return false;
 }
 

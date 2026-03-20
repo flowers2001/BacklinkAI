@@ -13,10 +13,12 @@
     "storage",
     "activeTab",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "identity"
   ],
   "host_permissions": [
     "https://openai-baibei.openai.azure.com/*",
+    "https://*.supabase.co/*",
     "<all_urls>"
   ],
   "action": {
@@ -36,10 +38,22 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
-  "options_page": "options.html"
+  "options_page": "options.html",
+  "oauth2": {
+    "client_id": "355294874695-gsrngfsb8jbhio2p8i15te727jr0i586.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "email",
+      "profile"
+    ]
+  }
 }

@@ -25,13 +25,27 @@ export async function generateContent(
   charLimit?: number
 ): Promise<DualContentResult> {
   try {
-    const [projectInfo, apiConfig] = await Promise.all([
-      getProjectInfo(),
-      getAPIConfig(),
-    ]);
+    const projectInfo = await getProjectInfo();
     
-    if (!apiConfig.apiKey) {
-      return { success: false, error: '请先配置 API Key' };
+    // 优先使用环境变量中的 API Key
+    let apiConfig: APIConfig;
+    const envApiKey = import.meta.env.VITE_AZURE_API_KEY;
+    
+    if (envApiKey) {
+      // 使用环境变量配置
+      apiConfig = {
+        provider: 'azure',
+        apiKey: envApiKey,
+        azureEndpoint: import.meta.env.VITE_AZURE_ENDPOINT || 'https://openai-baibei.openai.azure.com',
+        azureDeployment: import.meta.env.VITE_AZURE_DEPLOYMENT || 'gpt-4.1',
+        azureApiVersion: import.meta.env.VITE_AZURE_API_VERSION || '2024-12-01-preview',
+      };
+    } else {
+      // 从用户配置读取
+      apiConfig = await getAPIConfig();
+      if (!apiConfig.apiKey) {
+        return { success: false, error: '请先配置 API Key' };
+      }
     }
     
     if (!projectInfo.targetUrl) {
@@ -91,6 +105,14 @@ async function callAzureOpenAI(
   
   const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
   
+  // 🖨️ 打印发送给模型的 Prompt
+  // console.log('\n=========================== 📤 发送给模型的 Prompt ===========================');
+  // console.log('\n【System Prompt】:');
+  // console.log(systemPrompt);
+  // console.log('\n【User Prompt】:');
+  // console.log(userPrompt);
+  // console.log('\n================================================================================\n');
+  
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
   
@@ -123,6 +145,11 @@ async function callAzureOpenAI(
     const content = data.choices?.[0]?.message?.content;
     
     if (!content) throw new Error('API 返回内容为空');
+    
+    // 🖨️ 打印模型返回的内容
+    // console.log('\n=========================== 📥 模型返回的内容 ===========================');
+    // console.log(content.trim());
+    // console.log('\n==========================================================================\n');
     
     return content.trim();
   } catch (error) {

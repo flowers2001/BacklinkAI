@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { WorkMode, ScrapedContent } from '../shared/types';
+import { getCurrentUser } from '../lib/supabase';
+import { getPromotionSites, getActiveSite } from '../models/promotion-sites';
+import { createBacklink } from '../models/backlinks';
+import type { PromotionSite } from '../shared/supabase-types';
 
 interface FormFieldInfo {
   name: string;
@@ -21,10 +25,35 @@ function App() {
   const [isFilling, setIsFilling] = useState(false);
   const [originalComment, setOriginalComment] = useState('');
   const [chineseComment, setChineseComment] = useState('');
-  const [statusMessage, setStatusMessage] = useState('');
-  const [statusType, setStatusType] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [editingOriginal, setEditingOriginal] = useState(false);
-  const [editingChinese, setEditingChinese] = useState(false);
+  // const [statusMessage, setStatusMessage] = useState('');
+  // const [statusType, setStatusType] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  
+  // Supabase 相关状态
+  const [user, setUser] = useState<any>(null);
+  const [sites, setSites] = useState<PromotionSite[]>([]);
+  const [activeSite, setActiveSite] = useState<PromotionSite | null>(null);
+
+  // 加载用户和推广网站
+  useEffect(() => {
+    loadUserAndSites();
+  }, []);
+
+  const loadUserAndSites = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+        const userSites = await getPromotionSites(currentUser.id);
+        setSites(userSites);
+        
+        // 获取激活的网站
+        const active = await getActiveSite(currentUser.id);
+        setActiveSite(active);
+      }
+    } catch (error) {
+      console.error('❌ 加载用户数据失败:', error);
+    }
+  };
 
   // 自动提取（不显示状态消息）
   const handleExtractAuto = useCallback(async () => {
@@ -71,8 +100,8 @@ function App() {
       setFormFields([]);
       setOriginalComment('');
       setChineseComment('');
-      setStatusMessage('');
-      setStatusType('idle');
+      // setStatusMessage('');
+      // setStatusType('idle');
       setTimeout(() => {
         handleExtractAuto();
         handleDetectFormAuto();
@@ -91,8 +120,8 @@ function App() {
   // 手动检测表单
   const handleDetectForm = useCallback(async () => {
     setIsDetecting(true);
-    setStatusMessage('正在检测表单字段...');
-    setStatusType('loading');
+    // setStatusMessage('正在检测表单字段...');
+    // setStatusType('loading');
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -105,16 +134,16 @@ function App() {
       
       if (response.success) {
         setFormFields(response.fields || []);
-        const foundCount = response.fields.filter((f: FormFieldInfo) => f.found).length;
-        setStatusMessage(`检测到 ${foundCount} 个可填充字段`);
-        setStatusType('success');
+        // const foundCount = response.fields.filter((f: FormFieldInfo) => f.found).length;
+        // setStatusMessage(`检测到 ${foundCount} 个可填充字段`);
+        // setStatusType('success');
       } else {
         throw new Error(response.error || '检测失败');
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '检测失败';
-      setStatusMessage(msg);
-      setStatusType('error');
+      // const msg = error instanceof Error ? error.message : '检测失败';
+      // setStatusMessage(msg);
+      // setStatusType('error');
     } finally {
       setIsDetecting(false);
     }
@@ -123,8 +152,8 @@ function App() {
   // 提取页面内容
   const handleExtract = useCallback(async () => {
     setIsExtracting(true);
-    setStatusMessage('正在提取页面内容...');
-    setStatusType('loading');
+    // setStatusMessage('正在提取页面内容...');
+    // setStatusType('loading');
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -134,15 +163,15 @@ function App() {
       
       if (response.success) {
         setPageContent(response.data);
-        setStatusMessage('提取成功');
-        setStatusType('success');
+        // setStatusMessage('提取成功');
+        // setStatusType('success');
       } else {
         throw new Error(response.error || '提取失败');
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '提取失败';
-      setStatusMessage(msg);
-      setStatusType('error');
+      // const msg = error instanceof Error ? error.message : '提取失败';
+      // setStatusMessage(msg);
+      // setStatusType('error');
     } finally {
       setIsExtracting(false);
     }
@@ -152,23 +181,41 @@ function App() {
   const handleGenerate = useCallback(async () => {
     // 评论模式需要页面内容，导航站模式不需要
     if (mode === 'comment' && !pageContent) {
-      setStatusMessage('请先提取页面内容');
-      setStatusType('error');
+      alert('请先提取页面内容');
       return;
     }
 
     setIsGenerating(true);
-    setStatusMessage('正在生成内容...');
-    setStatusType('loading');
     setOriginalComment('');
     setChineseComment('');
 
     try {
-      const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-      if (!configResponse.success) throw new Error('无法获取配置');
-
-      const projectInfo = configResponse.data.project;
-      if (!projectInfo.targetUrl) throw new Error('请先在设置中配置推广网址');
+      // 优先使用 Supabase 中的激活网站，否则用本地配置
+      let projectInfo: any;
+      
+      if (activeSite) {
+        // 使用 Supabase 数据
+        projectInfo = {
+          targetUrl: activeSite.url,
+          keywords: activeSite.keywords || '',
+          brandName: activeSite.brand_name || '',
+          title: activeSite.title || '',
+          tagline: activeSite.tagline || '',
+          description: activeSite.description || '',
+          email: activeSite.email || '',
+          name: activeSite.author_name || '',
+        };
+      } else {
+        // 使用本地配置（兼容未登录场景）
+        const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+        if (!configResponse.success) throw new Error('无法获取配置');
+        projectInfo = configResponse.data.project;
+      }
+      
+      if (!projectInfo.targetUrl) {
+        alert('请先在设置中配置推广网址');
+        return;
+      }
 
       // 解析字符限制：优先用户输入，否则用网页提取的（最小20字符）
       const MIN_CHAR_LIMIT = 20;
@@ -198,78 +245,40 @@ function App() {
 
       setOriginalComment(response.original || '');
       setChineseComment(response.chinese || '');
-      setStatusMessage('生成完成！');
-      setStatusType('success');
+      // setStatusMessage('生成完成！');
+      // setStatusType('success');
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '生成失败';
-      setStatusMessage(msg);
-      setStatusType('error');
+      // const msg = error instanceof Error ? error.message : '生成失败';
+      // setStatusMessage(msg);
+      // setStatusType('error');
     } finally {
       setIsGenerating(false);
     }
-  }, [mode, pageContent, charLimitInput, formFields]);
+  }, [mode, pageContent, charLimitInput, formFields, activeSite]);
 
   // 填充表单
   const handleFill = useCallback(async (useChineseVersion: boolean) => {
     const contentToFill = useChineseVersion ? chineseComment : originalComment;
-    if (!contentToFill) {
-      setStatusMessage('没有可填充的内容');
-      setStatusType('error');
-      return;
-    }
 
     setIsFilling(true);
-    setStatusMessage('正在填充表单...');
-    setStatusType('loading');
 
     try {
-      const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-      const projectInfo = configResponse.data?.project || {};
-
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('无法获取标签页');
-
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        type: 'FILL_FORM',
-        payload: {
-          url: projectInfo.targetUrl || '',
-          email: projectInfo.email || '',
-          sitename: projectInfo.brandName || '',      // 网站名/品牌名
-          author: projectInfo.name || '',              // 联系人/作者
-          title: projectInfo.title || '',              // 网站标题
-          tagline: projectInfo.tagline || '',          // 标语/简短描述
-          content: contentToFill,
-          mode: mode,  // 传递当前模式
-        },
-      });
-
-      if (response.success) {
-        const filled = response.filledFields.length;
-        const missed = response.missingFields.length;
-        setStatusMessage(`填充完成！已填充 ${filled} 个字段${missed > 0 ? `，${missed} 个未找到` : ''}`);
-        setStatusType('success');
+      // 优先使用 Supabase 中的激活网站，否则用本地配置
+      let projectInfo: any;
+      
+      if (activeSite) {
+        projectInfo = {
+          targetUrl: activeSite.url,
+          email: activeSite.email || '',
+          brandName: activeSite.brand_name || '',
+          name: activeSite.author_name || '',
+          title: activeSite.title || '',
+          tagline: activeSite.tagline || '',
+        };
       } else {
-        setStatusMessage('未找到可填充的表单字段');
-        setStatusType('error');
+        const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+        projectInfo = configResponse.data?.project || {};
       }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : '填充失败';
-      setStatusMessage(msg);
-      setStatusType('error');
-    } finally {
-      setIsFilling(false);
-    }
-  }, [mode, originalComment, chineseComment]);
-
-  // 快速填充：只填充基础字段（URL、邮箱、网站名等），不需要 AI 生成内容
-  const handleQuickFill = useCallback(async () => {
-    setIsFilling(true);
-    setStatusMessage('正在快速填充...');
-    setStatusType('loading');
-
-    try {
-      const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-      const projectInfo = configResponse.data?.project || {};
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('无法获取标签页');
@@ -283,29 +292,51 @@ function App() {
           author: projectInfo.name || '',
           title: projectInfo.title || '',
           tagline: projectInfo.tagline || '',
-          content: '',  // 不填充评论/描述内容
-          mode: mode,  // 传递当前模式
+          content: contentToFill,
+          mode: mode,
         },
       });
 
       if (response.success) {
-        const filled = response.filledFields.length;
-        const missed = response.missingFields?.length || 0;
-        setStatusMessage(`快速填充完成！已填充 ${filled} 个字段${missed > 0 ? `，${missed} 个未找到` : ''}`);
-        setStatusType('success');
+        // const filled = response.filledFields.length;
+        // const missed = response.missingFields.length;
+        // setStatusMessage(`填充完成！已填充 ${filled} 个字段${missed > 0 ? `，${missed} 个未找到` : ''}`);
+        // setStatusType('success');
+        
+        // 自动保存外链记录到 Supabase
+        if (user && activeSite && tab.url) {
+          try {
+            const domain = new URL(tab.url).hostname;
+            await createBacklink({
+              user_id: user.id,
+              site_id: activeSite.id,
+              domain: domain,
+              backlink_url: tab.url,
+              embedded_link: projectInfo.targetUrl,
+              mode: mode,
+              content: contentToFill,
+              status: 'success',
+            });
+            console.log('✅ 外链记录已自动保存');
+          } catch (error) {
+            console.error('❌ 保存外链记录失败:', error);
+            // 不影响主流程，静默失败
+          }
+        }
       } else {
-        setStatusMessage('未找到可填充的表单字段');
-        setStatusType('error');
+        // setStatusMessage('未找到可填充的表单字段');
+        // setStatusType('error');
       }
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '填充失败';
-      setStatusMessage(msg);
-      setStatusType('error');
+      // const msg = error instanceof Error ? error.message : '填充失败';
+      // setStatusMessage(msg);
+      // setStatusType('error');
     } finally {
       setIsFilling(false);
     }
-  }, [mode]);
+  }, [mode, originalComment, chineseComment, activeSite]);
 
+  // 快速填充：只填充基础字段（URL、邮箱、网站名等），不需要 AI 生成内容
   const handleOpenSettings = useCallback(() => {
     chrome.runtime.openOptionsPage();
   }, []);
@@ -322,22 +353,22 @@ function App() {
       });
       
       if (response.success) {
-        setStatusMessage(response.message);
-        setStatusType('success');
+        // setStatusMessage(response.message);
+        // setStatusType('success');
       } else {
-        setStatusMessage(response.message || '未找到表单');
-        setStatusType('error');
+        // setStatusMessage(response.message || '未找到表单');
+        // setStatusType('error');
       }
     } catch (error) {
-      setStatusMessage('定位失败');
-      setStatusType('error');
+      // setStatusMessage('定位失败');
+      // setStatusType('error');
     }
   }, [mode]);
 
   const handleCopy = useCallback(async (text: string) => {
     await navigator.clipboard.writeText(text);
-    setStatusMessage('已复制到剪贴板');
-    setStatusType('success');
+    // setStatusMessage('已复制到剪贴板');
+    // setStatusType('success');
   }, []);
 
   // 高亮单个字段
@@ -352,8 +383,8 @@ function App() {
       });
       
       if (response.success) {
-        setStatusMessage(response.message);
-        setStatusType('success');
+        // setStatusMessage(response.message);
+        // setStatusType('success');
       }
     } catch (error) {
       // 静默失败
@@ -389,6 +420,42 @@ function App() {
       </header>
 
       <div className="main-content">
+        {/* 推广项目选择器 */}
+        {user && sites.length > 0 && (
+          <div style={{
+            padding: '12px 16px',
+            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderBottom: '1px solid #bfdbfe',
+            marginBottom: '12px'
+          }}>
+            <div style={{ fontSize: '11px', color: '#1e40af', marginBottom: '6px', fontWeight: '500' }}>
+              当前推广项目
+            </div>
+            <select
+              value={activeSite?.id || ''}
+              onChange={(e) => {
+                const selected = sites.find(s => s.id === e.target.value);
+                setActiveSite(selected || null);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #93c5fd',
+                borderRadius: '8px',
+                fontSize: '13px',
+                background: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              {sites.map(site => (
+                <option key={site.id} value={site.id}>
+                  {site.is_active ? '● ' : ''}{site.name} ({new URL(site.url).hostname})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* 模式选择 */}
         <div className="mode-tabs">
           <button
@@ -455,26 +522,20 @@ function App() {
               </div>
               <div className="card-body">
                 {formFields.length > 0 ? (
-                  <div className="extracted-content">
+                  <div className="field-tags-container">
                     {formFields.map((field, index) => (
-                      <div 
-                        key={index} 
-                        className={`form-field-item ${field.found ? 'clickable' : ''}`}
+                      <div
+                        key={index}
+                        className={`field-tag ${field.found ? 'found' : 'not-found'} ${field.found ? 'clickable' : ''}`}
                         onClick={() => field.found && handleHighlightField(field.type)}
-                        title={field.found ? '点击定位到该字段' : ''}
+                        title={field.found ? `点击定位 | 得分: ${field.score}` : '未匹配'}
                       >
-                        <span className={`field-status ${field.found ? 'found' : 'not-found'}`}>
+                        <span className="field-tag-icon">
                           {field.found ? '✓' : '✗'}
                         </span>
-                        <span className="field-name">
-                          {field.name}
-                          {field.required && <span className="field-required">*</span>}
-                        </span>
+                        <span className="field-tag-name">{field.name}</span>
                         {field.found && field.score && (
-                          <span className="field-score">{field.score}分</span>
-                        )}
-                        {field.maxLength && (
-                          <span className="field-limit">≤{field.maxLength}字</span>
+                          <span className="field-tag-score">{field.score}</span>
                         )}
                       </div>
                     ))}
@@ -502,26 +563,20 @@ function App() {
             </div>
             <div className="card-body">
               {formFields.length > 0 ? (
-                <div className="extracted-content">
+                <div className="field-tags-container">
                   {formFields.map((field, index) => (
                     <div 
                       key={index} 
-                      className={`form-field-item ${field.found ? 'clickable' : ''}`}
+                      className={`field-tag ${field.found ? 'found' : 'not-found'} ${field.found ? 'clickable' : ''}`}
                       onClick={() => field.found && handleHighlightField(field.type)}
-                      title={field.found ? '点击定位到该字段' : ''}
+                      title={field.found ? `点击定位 | 得分: ${field.score}` : '未匹配'}
                     >
-                      <span className={`field-status ${field.found ? 'found' : 'not-found'}`}>
+                      <span className="field-tag-icon">
                         {field.found ? '✓' : '✗'}
                       </span>
-                      <span className="field-name">
-                        {field.name}
-                        {field.required && <span className="field-required">*</span>}
-                      </span>
+                      <span className="field-tag-name">{field.name}</span>
                       {field.found && field.score && (
-                        <span className="field-score">{field.score}分</span>
-                      )}
-                      {field.maxLength && (
-                        <span className="field-limit">≤{field.maxLength}字</span>
+                        <span className="field-tag-score">{field.score}</span>
                       )}
                     </div>
                   ))}
@@ -536,21 +591,73 @@ function App() {
         {/* ========== 评论模式的独立区域 ========== */}
         {mode === 'comment' && (
           <>
-            {/* 状态提示 */}
-            {statusMessage && (
-              <div className={`status-bar ${statusType}`}>
-                {isLoading && <div className="spinner" />}
-                <span>{statusMessage}</span>
-              </div>
-            )}
 
+            {/* 评论区容器 */}
+            <div className="comments-container">
+              {/* 原评论框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">原评论</span>
+                  <span className="card-badge">
+                    {originalComment.length} 字符
+                  </span>
+                </div>
+                <div className="card-body content-body-with-copy">
+                  <textarea
+                    className="content-textarea"
+                    value={originalComment}
+                    onChange={(e) => setOriginalComment(e.target.value)}
+                    placeholder="生成后显示原文评论，点击可编辑"
+                  />
+                  <button
+                    className="copy-icon-btn-inner"
+                    onClick={() => handleCopy(originalComment)}
+                    title="复制"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* 中文评论框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">中文评论</span>
+                  <span className="card-badge">
+                    {chineseComment.length} 字符
+                  </span>
+                </div>
+                <div className="card-body content-body-with-copy">
+                  <textarea
+                    className="content-textarea"
+                    value={chineseComment}
+                    onChange={(e) => setChineseComment(e.target.value)}
+                    placeholder="生成后显示中文版本，点击可编辑"
+                  />
+                  <button
+                    className="copy-icon-btn-inner"
+                    onClick={() => handleCopy(chineseComment)}
+                    title="复制"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
             {/* 操作按钮 */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
               <button
                 className="btn btn-primary"
                 onClick={handleGenerate}
                 disabled={isLoading || !pageContent}
-                style={{ flex: 2 }}
+                style={{ flex: 1 }}
               >
                 {isGenerating ? (
                   <><div className="spinner" /> 生成中...</>
@@ -559,161 +666,103 @@ function App() {
                 )}
               </button>
               <button
-                className="btn btn-secondary"
-                onClick={handleQuickFill}
-                disabled={isLoading}
+                className="btn btn-success"
+                onClick={() => handleFill(false)}
+                disabled={isFilling}
                 style={{ flex: 1 }}
-                title="快速填充基础字段（URL、邮箱等）"
+                title="自动填充表单（使用原评论）"
               >
-                ⚡ 快速填充
+                {isFilling ? '填充中...' : '📝 自动填充'}
               </button>
-              <button
-                className="btn btn-secondary"
+            </div>
+            
+            {/* 表单统计 */}
+            {formFields.length > 0 && (
+              <div 
+                className="form-stats-link"
                 onClick={handleScrollToForm}
-                disabled={isLoading}
-                style={{ flex: 1 }}
-                title="定位到页面表单位置"
               >
-                📍 定位
-              </button>
-            </div>
-
-            {/* 评论区容器 */}
-            <div className="comments-container">
-              {/* 原评论框 */}
-              <div className="card flex-grow">
-                <div className="card-header">
-                  <span className="card-title">原评论</span>
-                  {originalComment && (
-                    <span className="card-badge">
-                      {originalComment.length} 字符
-                    </span>
-                  )}
-                </div>
-                <div className="card-body">
-                  {editingOriginal ? (
-                    <textarea
-                      className="content-textarea"
-                      value={originalComment}
-                      onChange={(e) => setOriginalComment(e.target.value)}
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="content-box">
-                      {originalComment ? (
-                        <div className="content-box-text">{originalComment}</div>
-                      ) : (
-                        <div className="content-box-placeholder">生成后显示原文评论</div>
-                      )}
-                    </div>
-                  )}
-                  {originalComment && (
-                    <div className="content-actions">
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setEditingOriginal(!editingOriginal)}
-                      >
-                        ✏️ {editingOriginal ? '完成' : '编辑'}
-                      </button>
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleCopy(originalComment)}
-                      >
-                        📋 复制
-                      </button>
-                      <button 
-                        className="btn btn-success btn-sm"
-                        onClick={() => handleFill(false)}
-                        disabled={isFilling}
-                      >
-                        📝 填充
-                      </button>
-                    </div>
-                  )}
-                </div>
+                已识别到 {formFields.filter(f => f.found).length} 个表单
               </div>
-
-              {/* 中文评论框 */}
-              <div className="card flex-grow">
-                <div className="card-header">
-                  <span className="card-title">中文评论</span>
-                  {chineseComment && (
-                    <span className="card-badge">
-                      {chineseComment.length} 字符
-                    </span>
-                  )}
-                </div>
-                <div className="card-body">
-                  {editingChinese ? (
-                    <textarea
-                      className="content-textarea"
-                      value={chineseComment}
-                      onChange={(e) => setChineseComment(e.target.value)}
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="content-box">
-                      {chineseComment ? (
-                        <div className="content-box-text">{chineseComment}</div>
-                      ) : (
-                        <div className="content-box-placeholder">生成后显示中文版本</div>
-                      )}
-                    </div>
-                  )}
-                  {chineseComment && (
-                    <div className="content-actions">
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setEditingChinese(!editingChinese)}
-                      >
-                        ✏️ {editingChinese ? '完成' : '编辑'}
-                      </button>
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleCopy(chineseComment)}
-                      >
-                        📋 复制
-                      </button>
-                      <button 
-                        className="btn btn-success btn-sm"
-                        onClick={() => handleFill(true)}
-                        disabled={isFilling}
-                      >
-                        📝 填充
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            )}
           </>
         )}
 
         {/* ========== 导航站模式的独立区域 ========== */}
         {mode === 'directory' && (
           <>
+
+            {/* 描述区容器 */}
+            <div className="comments-container">
+              {/* 原描述框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">网站描述</span>
+                  <span className={`card-badge ${charLimit && originalComment.length > charLimit ? 'over-limit' : ''}`}>
+                    {originalComment.length}{charLimit ? `/${charLimit}` : ''} 字符
+                  </span>
+                </div>
+                <div className="card-body content-body-with-copy">
+                  <textarea
+                    className="content-textarea"
+                    value={originalComment}
+                    onChange={(e) => setOriginalComment(e.target.value)}
+                    placeholder="生成后显示网站描述，点击可编辑"
+                  />
+                  <button
+                    className="copy-icon-btn-inner"
+                    onClick={() => handleCopy(originalComment)}
+                    title="复制"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* 中文描述框 */}
+              <div className="card flex-grow">
+                <div className="card-header">
+                  <span className="card-title">中文描述</span>
+                  <span className={`card-badge ${charLimit && chineseComment.length > charLimit ? 'over-limit' : ''}`}>
+                    {chineseComment.length}{charLimit ? `/${charLimit}` : ''} 字符
+                  </span>
+                </div>
+                <div className="card-body content-body-with-copy">
+                  <textarea
+                    className="content-textarea"
+                    value={chineseComment}
+                    onChange={(e) => setChineseComment(e.target.value)}
+                    placeholder="生成后显示中文版本，点击可编辑"
+                  />
+                  <button
+                    className="copy-icon-btn-inner"
+                    onClick={() => handleCopy(chineseComment)}
+                    title="复制"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
             {/* 字符限制输入 */}
             <div className="char-limit-input">
-              <label>字符限制：</label>
+              <label>生成字符限制(可选)：</label>
               <input
                 type="number"
-                placeholder="留空不限制"
                 value={charLimitInput}
                 onChange={(e) => setCharLimitInput(e.target.value)}
                 disabled={isLoading}
                 min="1"
                 max="10000"
               />
-              <span className="input-hint">英文含空格</span>
             </div>
-
-            {/* 状态提示 */}
-            {statusMessage && (
-              <div className={`status-bar ${statusType}`}>
-                {isLoading && <div className="spinner" />}
-                <span>{statusMessage}</span>
-              </div>
-            )}
 
             {/* 操作按钮 */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
@@ -721,7 +770,7 @@ function App() {
                 className="btn btn-primary"
                 onClick={handleGenerate}
                 disabled={isLoading}
-                style={{ flex: 2 }}
+                style={{ flex: 1 }}
               >
                 {isGenerating ? (
                   <><div className="spinner" /> 生成中...</>
@@ -730,133 +779,25 @@ function App() {
                 )}
               </button>
               <button
-                className="btn btn-secondary"
-                onClick={handleQuickFill}
-                disabled={isLoading}
+                className="btn btn-success"
+                onClick={() => handleFill(false)}
+                disabled={isFilling}
                 style={{ flex: 1 }}
-                title="快速填充基础字段（URL、邮箱、网站名等）"
+                title="自动填充表单（使用网站描述）"
               >
-                ⚡ 快速填充
+                {isFilling ? '填充中...' : '📝 自动填充'}
               </button>
-              <button
-                className="btn btn-secondary"
+            </div>
+            
+            {/* 表单统计 */}
+            {formFields.length > 0 && (
+              <div 
+                className="form-stats-link"
                 onClick={handleScrollToForm}
-                disabled={isLoading}
-                style={{ flex: 1 }}
-                title="定位到页面表单位置"
               >
-                📍 定位
-              </button>
-            </div>
-
-            {/* 描述区容器 */}
-            <div className="comments-container">
-              {/* 原描述框 */}
-              <div className="card flex-grow">
-                <div className="card-header">
-                  <span className="card-title">网站描述</span>
-                  {originalComment && (
-                    <span className={`card-badge ${charLimit && originalComment.length > charLimit ? 'over-limit' : ''}`}>
-                      {originalComment.length}{charLimit ? `/${charLimit}` : ''} 字符
-                    </span>
-                  )}
-                </div>
-                <div className="card-body">
-                  {editingOriginal ? (
-                    <textarea
-                      className="content-textarea"
-                      value={originalComment}
-                      onChange={(e) => setOriginalComment(e.target.value)}
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="content-box">
-                      {originalComment ? (
-                        <div className="content-box-text">{originalComment}</div>
-                      ) : (
-                        <div className="content-box-placeholder">生成后显示网站描述</div>
-                      )}
-                    </div>
-                  )}
-                  {originalComment && (
-                    <div className="content-actions">
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setEditingOriginal(!editingOriginal)}
-                      >
-                        ✏️ {editingOriginal ? '完成' : '编辑'}
-                      </button>
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleCopy(originalComment)}
-                      >
-                        📋 复制
-                      </button>
-                      <button 
-                        className="btn btn-success btn-sm"
-                        onClick={() => handleFill(false)}
-                        disabled={isFilling}
-                      >
-                        📝 填充
-                      </button>
-                    </div>
-                  )}
-                </div>
+                已识别到 {formFields.filter(f => f.found).length} 个表单
               </div>
-
-              {/* 中文描述框 */}
-              <div className="card flex-grow">
-                <div className="card-header">
-                  <span className="card-title">中文描述</span>
-                  {chineseComment && (
-                    <span className={`card-badge ${charLimit && chineseComment.length > charLimit ? 'over-limit' : ''}`}>
-                      {chineseComment.length}{charLimit ? `/${charLimit}` : ''} 字符
-                    </span>
-                  )}
-                </div>
-                <div className="card-body">
-                  {editingChinese ? (
-                    <textarea
-                      className="content-textarea"
-                      value={chineseComment}
-                      onChange={(e) => setChineseComment(e.target.value)}
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="content-box">
-                      {chineseComment ? (
-                        <div className="content-box-text">{chineseComment}</div>
-                      ) : (
-                        <div className="content-box-placeholder">生成后显示中文版本</div>
-                      )}
-                    </div>
-                  )}
-                  {chineseComment && (
-                    <div className="content-actions">
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setEditingChinese(!editingChinese)}
-                      >
-                        ✏️ {editingChinese ? '完成' : '编辑'}
-                      </button>
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleCopy(chineseComment)}
-                      >
-                        📋 复制
-                      </button>
-                      <button 
-                        className="btn btn-success btn-sm"
-                        onClick={() => handleFill(true)}
-                        disabled={isFilling}
-                      >
-                        📝 填充
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            )}
           </>
         )}
       </div>
