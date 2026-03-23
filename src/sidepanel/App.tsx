@@ -25,30 +25,68 @@ function App() {
   const [isFilling, setIsFilling] = useState(false);
   const [originalComment, setOriginalComment] = useState('');
   const [chineseComment, setChineseComment] = useState('');
-  // const [statusMessage, setStatusMessage] = useState('');
-  // const [statusType, setStatusType] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  
+  // Toast 提示状态
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  const [showToast, setShowToast] = useState(false);
   
   // Supabase 相关状态
   const [user, setUser] = useState<any>(null);
   const [sites, setSites] = useState<PromotionSite[]>([]);
   const [activeSite, setActiveSite] = useState<PromotionSite | null>(null);
 
+  // Toast 提示函数
+  const showToastMessage = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
   // 加载用户和推广网站
   useEffect(() => {
     loadUserAndSites();
+    loadSavedComments();
   }, []);
 
-  // 监听窗口焦点变化，重新获得焦点时刷新数据
+  // 从 storage 恢复之前保存的评论
+  const loadSavedComments = async () => {
+    try {
+      const result = await chrome.storage.local.get(['saved_comment_original', 'saved_comment_chinese']);
+      console.log('[Sidepanel] 恢复评论 from storage:', {
+        hasOriginal: !!result.saved_comment_original,
+        hassChinese: !!result.saved_comment_chinese,
+        originalLength: result.saved_comment_original?.length || 0,
+        chineseLength: result.saved_comment_chinese?.length || 0,
+      });
+      
+      if (result.saved_comment_original) {
+        console.log('[Sidepanel] 设置 originalComment:', result.saved_comment_original.substring(0, 50));
+        setOriginalComment(result.saved_comment_original);
+      }
+      if (result.saved_comment_chinese) {
+        console.log('[Sidepanel] 设置 chineseComment:', result.saved_comment_chinese.substring(0, 50));
+        setChineseComment(result.saved_comment_chinese);
+      }
+    } catch (error) {
+      console.error('加载保存的评论失败:', error);
+    }
+  };
+
+  // 监听 storage 变化（当用户在设置页添加/修改推广网站时自动刷新）
   useEffect(() => {
-    const handleFocus = () => {
-      console.log('[Sidepanel] 窗口重新获得焦点，刷新数据...');
-      loadUserAndSites();
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName === 'local' && changes.supabase_user) {
+        console.log('[Sidepanel] 检测到用户登录/登出，刷新用户数据...');
+        loadUserAndSites();
+      }
     };
 
-    window.addEventListener('focus', handleFocus);
+    chrome.storage.onChanged.addListener(handleStorageChange);
     
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      chrome.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);
 
@@ -121,10 +159,9 @@ function App() {
     const handleTabChange = () => {
       setPageContent(null);
       setFormFields([]);
-      setOriginalComment('');
-      setChineseComment('');
-      // setStatusMessage('');
-      // setStatusType('idle');
+      // 不清空评论，让用户可以跨页面使用同一个评论
+      // setOriginalComment('');
+      // setChineseComment('');
       setTimeout(() => {
         handleExtractAuto();
         handleDetectFormAuto();
@@ -262,18 +299,26 @@ function App() {
 
       if (!response.success) throw new Error(response.error || '生成失败');
 
-      setOriginalComment(response.original || '');
-      setChineseComment(response.chinese || '');
-      // setStatusMessage('生成完成！');
-      // setStatusType('success');
+      const originalText = response.original || '';
+      const chineseText = response.chinese || '';
+      
+      setOriginalComment(originalText);
+      setChineseComment(chineseText);
+      
+      // 保存到 storage，防止刷新丢失
+      await chrome.storage.local.set({
+        saved_comment_original: originalText,
+        saved_comment_chinese: chineseText,
+      });
+      console.log('[Sidepanel] 评论已保存到 storage:', { originalText: originalText.substring(0, 50), chineseText: chineseText.substring(0, 50) });
     } catch (error) {
-      // const msg = error instanceof Error ? error.message : '生成失败';
-      // setStatusMessage(msg);
-      // setStatusType('error');
+      const msg = error instanceof Error ? error.message : '生成失败';
+      showToastMessage('生成失败：' + msg, 'error');
+      console.error('生成错误:', error);
     } finally {
       setIsGenerating(false);
     }
-  }, [mode, pageContent, charLimitInput, formFields, activeSite]);
+  }, [mode, pageContent, charLimitInput, formFields, activeSite, user]);
 
   // 填充表单
   const handleFill = useCallback(async (useChineseVersion: boolean) => {
@@ -316,10 +361,6 @@ function App() {
       });
 
       if (response.success) {
-        // const filled = response.filledFields.length;
-        // const missed = response.missingFields.length;
-        // setStatusMessage(`填充完成！已填充 ${filled} 个字段${missed > 0 ? `，${missed} 个未找到` : ''}`);
-        // setStatusType('success');
         
         // 自动保存外链记录到 Supabase
         if (user && activeSite && tab.url) {
@@ -343,17 +384,19 @@ function App() {
             console.log('✅ 外链记录已自动保存');
           } catch (error) {
             console.error('❌ 保存外链记录失败:', error);
-            // 不影响主流程，静默失败
           }
         }
+        
+        // 显示成功提示
+        const successMsg = "填充完成\n\n外链记录已保存!";
+        showToastMessage(successMsg, 'success');
       } else {
-        // setStatusMessage('未找到可填充的表单字段');
-        // setStatusType('error');
+        showToastMessage('未找到可填充的表单字段', 'error');
       }
     } catch (error) {
-      // const msg = error instanceof Error ? error.message : '填充失败';
-      // setStatusMessage(msg);
-      // setStatusType('error');
+      const msg = error instanceof Error ? error.message : '填充失败';
+      showToastMessage('填充失败：' + msg, 'error');
+      console.error('填充错误:', error);
     } finally {
       setIsFilling(false);
     }
@@ -899,6 +942,29 @@ function App() {
           </>
         )}
       </div>
+
+      {/* Toast 提示 */}
+      {showToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'white',
+          padding: '14px 20px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)',
+          fontSize: '13px',
+          fontWeight: '500',
+          zIndex: 10000,
+          maxWidth: '90%',
+          animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          border: `2px solid ${toastType === 'success' ? '#10b981' : toastType === 'error' ? '#ef4444' : '#3b82f6'}`,
+          textAlign: 'center',
+        }}>
+          <span style={{ color: '#1f2937', whiteSpace: 'pre-line' }}>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

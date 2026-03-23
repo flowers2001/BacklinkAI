@@ -50,7 +50,8 @@ async function handleMessage(
         const result = await generateContent(
           genMsg.payload.mode, 
           genMsg.payload.pageContent,
-          genMsg.payload.charLimit
+          genMsg.payload.charLimit,
+          genMsg.payload.projectInfo
         );
         sendResponse(result);
         break;

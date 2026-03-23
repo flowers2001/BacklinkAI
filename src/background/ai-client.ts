@@ -22,10 +22,12 @@ export interface DualContentResult {
 export async function generateContent(
   mode: WorkMode,
   pageContent: ScrapedContent | null,
-  charLimit?: number
+  charLimit?: number,
+  projectInfo?: any
 ): Promise<DualContentResult> {
   try {
-    const projectInfo = await getProjectInfo();
+    // 优先使用传入的 projectInfo（来自 Supabase），否则从 storage 读取
+    const finalProjectInfo = projectInfo || await getProjectInfo();
     
     // 优先使用环境变量中的 API Key
     let apiConfig: APIConfig;
@@ -48,11 +50,11 @@ export async function generateContent(
       }
     }
     
-    if (!projectInfo.targetUrl) {
+    if (!finalProjectInfo.targetUrl) {
       return { success: false, error: '请先配置推广网址' };
     }
     
-    const userPrompt = buildPrompt(mode, pageContent, projectInfo, charLimit);
+    const userPrompt = buildPrompt(mode, pageContent, finalProjectInfo, charLimit);
     const systemPrompt = getSystemPrompt();
     const response = await callAzureOpenAI(systemPrompt, userPrompt, apiConfig);
     

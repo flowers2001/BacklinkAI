@@ -858,3 +858,15 @@ body:has(.sidepanel-container) {
   font-size: 10px;
   color: var(--text-muted);
 }
+
+/* Toast 提示动画 */
+@keyframes slideUp {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}

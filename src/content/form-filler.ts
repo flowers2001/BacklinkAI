@@ -341,15 +341,15 @@ function findBestMatch(schema: FieldSchema, excludeElements: Set<HTMLElement> = 
   }
   
   // 调试日志：输出所有候选元素的评分
-  console.log(`[字段识别] ${schema.type} 字段评分详情：`);
-  allScores
-    .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .forEach(s => {
-      const el = s.element as HTMLInputElement;
-      console.log(`  - 分数: ${s.score} | 元素: <${el.tagName.toLowerCase()} name="${el.name}" id="${el.id}" type="${el.type}"> | 匹配: ${s.details.join(', ')}`);
-    });
+  // console.log(`[字段识别] ${schema.type} 字段评分详情：`);
+  // allScores
+  //   .filter(s => s.score > 0)
+  //   .sort((a, b) => b.score - a.score)
+  //   .slice(0, 5)
+  //   .forEach(s => {
+  //     const el = s.element as HTMLInputElement;
+  //     console.log(`  - 分数: ${s.score} | 元素: <${el.tagName.toLowerCase()} name="${el.name}" id="${el.id}" type="${el.type}"> | 匹配: ${s.details.join(', ')}`);
+  //   });
   
   return bestMatch;
 }
@@ -508,7 +508,7 @@ export async function fillForm(data: FillData, mode?: 'comment' | 'directory'): 
         filledFields.push(schema.type);
         usedElements.add(match.element);
         
-        console.log(`[AI外链助手] 填充 ${schema.type}: 得分 ${match.score}`, match.matchDetails);
+        // console.log(`[AI外链助手] 填充 ${schema.type}: 得分 ${match.score}`, match.matchDetails);
         
         await randomDelay();
         await randomDelay();
@@ -764,7 +764,7 @@ export function highlightFields(): void {
     if (match) {
       match.element.style.outline = '2px solid #4f46e5';
       match.element.style.outlineOffset = '2px';
-      console.log(`[AI外链助手] ${schema.type}: 得分 ${match.score}`, match.matchDetails);
+      // console.log(`[AI外链助手] ${schema.type}: 得分 ${match.score}`, match.matchDetails);
     }
   }
 }
