@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "BacklinkAI",
   "name_en": "Backlink AI Assistant",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "AI 驱动的外链发布助手，自动读取网页内容，生成个性化评论/站点描述，智能填充表单",
   "icons": {
     "16": "icons/icon16.png",

@@ -510,15 +510,199 @@ function BacklinksTable({ backlinks, onDelete }: {
   backlinks: Backlink[];
   onDelete: (id: string) => void;
 }) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+
+  // 切换日期组的展开/收起
+  const toggleExpand = (date: string) => {
+    const newSet = new Set(expandedDates);
+    if (newSet.has(date)) {
+      newSet.delete(date);
+    } else {
+      newSet.add(date);
+    }
+    setExpandedDates(newSet);
+  };
+
+  // 按日期分组
+  const groupByDate = (links: Backlink[]) => {
+    const groups: Record<string, Backlink[]> = {};
+    
+    links.forEach(link => {
+      if (!link.submitted_at) return;
+      const date = new Date(link.submitted_at);
+      const dateKey = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+      
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(link);
+    });
+
+    return Object.entries(groups)
+      .sort(([dateA], [dateB]) => {
+        const [yearA, monthA, dayA] = dateA.split('-').map(Number);
+        const [yearB, monthB, dayB] = dateB.split('-').map(Number);
+        const timeA = new Date(yearA, monthA - 1, dayA).getTime();
+        const timeB = new Date(yearB, monthB - 1, dayB).getTime();
+        return timeB - timeA;
+      })
+      .map(([date, items]) => ({ date, items }));
+  };
+
+  // 切换单个记录的选中状态
+  const toggleSelect = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  // 切换某个日期的所有记录
+  const toggleDateGroup = (items: Backlink[]) => {
+    const dateIds = items.map(item => item.id).filter(Boolean) as string[];
+    const allSelected = dateIds.every(id => selectedIds.has(id));
+    
+    const newSet = new Set(selectedIds);
+    if (allSelected) {
+      dateIds.forEach(id => newSet.delete(id));
+    } else {
+      dateIds.forEach(id => newSet.add(id));
+    }
+    setSelectedIds(newSet);
+  };
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    const allIds = backlinks.map(link => link.id).filter(Boolean) as string[];
+    if (selectedIds.size === allIds.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+
+  // 导出为 CSV
+  const exportToCSV = () => {
+    if (selectedIds.size === 0) {
+      alert('请先选择要导出的记录');
+      return;
+    }
+
+    const selectedLinks = backlinks.filter(link => link.id && selectedIds.has(link.id));
+
+    const headers = ['日期', 'URL', '提交内容', '嵌入链接', '类型', '提交时间'];
+    const rows = selectedLinks.map(link => {
+      const submitDate = link.submitted_at ? new Date(link.submitted_at) : null;
+      return [
+        submitDate ? `\t${formatDate(submitDate)}` : '',
+        link.backlink_url,
+        link.content || '',
+        link.embedded_link || '',
+        link.mode === 'comment' ? '评论' : '导航站',
+        submitDate ? `\t${formatTime(submitDate)}` : '',
+      ];
+    });
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `外链记录_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 格式化日期（仅日期）
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // 格式化时间（仅时分秒）
+  const formatTime = (date: Date) => {
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    const second = String(date.getSeconds()).padStart(2, '0');
+    return `${hour}:${minute}:${second}`;
+  };
+
+  const groupedBacklinks = groupByDate(backlinks);
+
   return (
     <div>
-      {/* 统计信息 */}
-      <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
-        共 {backlinks.length} 条外链记录
+      {/* 工具栏 */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '20px',
+        gap: '12px',
+      }}>
+        {/* 左侧：统计信息 + 全选按钮 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '14px', color: '#6b7280' }}>
+            共 {backlinks.length} 条记录
+            {selectedIds.size > 0 && (
+              <span style={{ color: '#3b82f6', fontWeight: '500' }}>
+                {' '}(已选 {selectedIds.size} 条)
+              </span>
+            )}
+          </div>
+          
+          {backlinks.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              style={{
+                padding: '6px 12px',
+                background: 'white',
+                color: '#6b7280',
+                border: '1px solid #e5e7eb',
+                borderRadius: '6px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                fontWeight: '500',
+              }}
+            >
+              {selectedIds.size === backlinks.length ? '取消全选' : '全选'}
+            </button>
+          )}
+        </div>
+
+        {/* 导出按钮 */}
+        <button
+          onClick={exportToCSV}
+          disabled={selectedIds.size === 0}
+          style={{
+            padding: '8px 16px',
+            background: '#10b981',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: '500',
+            cursor: selectedIds.size === 0 ? 'default' : 'pointer',
+            opacity: selectedIds.size === 0 ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          📥 导出已选 ({selectedIds.size})
+        </button>
       </div>
 
-      {/* 表格 */}
-      {backlinks.length === 0 ? (
+      {/* 按日期分组显示 */}
+      {groupedBacklinks.length === 0 ? (
         <div style={{
           background: 'white',
           border: '2px dashed #e5e7eb',
@@ -535,97 +719,193 @@ function BacklinksTable({ backlinks, onDelete }: {
           </p>
         </div>
       ) : (
-        <div style={{
-          background: 'white',
-          borderRadius: '12px',
-          border: '1px solid #e5e7eb',
-          overflow: 'hidden'
-        }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={thStyle}>域名</th>
-                <th style={thStyle}>URL</th>
-                <th style={thStyle}>嵌入链接</th>
-                <th style={thStyle}>类型</th>
-                <th style={thStyle}>提交时间</th>
-                <th style={thStyle}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {backlinks.map((link) => (
-                <tr key={link.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>
-                    <div style={{ fontWeight: '500', color: '#1f2937' }}>{link.domain}</div>
-                  </td>
-                  <td style={tdStyle}>
-                    <a
-                      href={link.backlink_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: '#2563eb',
-                        textDecoration: 'none',
-                        fontSize: '13px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        maxWidth: '300px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {link.backlink_url}
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                        <polyline points="15 3 21 3 21 9"></polyline>
-                        <line x1="10" y1="14" x2="21" y2="3"></line>
-                      </svg>
-                    </a>
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                      {link.embedded_link || '-'}
-                    </div>
-                  </td>
-                  <td style={tdStyle}>
-                    <span style={{
-                      padding: '4px 10px',
-                      background: link.mode === 'comment' ? '#dbeafe' : '#fef3c7',
-                      color: link.mode === 'comment' ? '#1e40af' : '#92400e',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '500'
-                    }}>
-                      {link.mode === 'comment' ? '评论' : '导航站'}
-                    </span>
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                      {link.submitted_at ? new Date(link.submitted_at).toLocaleString('zh-CN') : '-'}
-                    </div>
-                  </td>
-                  <td style={tdStyle}>
-                    <button
-                      onClick={() => link.id && onDelete(link.id)}
-                      style={{
-                        padding: '6px 12px',
-                        background: 'transparent',
-                        border: '1px solid #fca5a5',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        color: '#dc2626',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      🗑️
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {groupedBacklinks.map(({ date, items }) => (
+            <div key={date} style={{
+              background: 'white',
+              borderRadius: '12px',
+              border: '1px solid #e5e7eb',
+              overflow: 'hidden'
+            }}>
+              {/* 日期标题 */}
+              <div style={{
+                background: '#f9fafb',
+                padding: '12px 16px',
+                borderBottom: expandedDates.has(date) ? '1px solid #e5e7eb' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                {/* 左侧：箭头 + 日期 + 数量 */}
+                <div 
+                  onClick={() => toggleExpand(date)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px',
+                    cursor: 'pointer',
+                    flex: 1
+                  }}
+                >
+                  <span style={{ 
+                    fontSize: '14px', 
+                    color: '#6b7280',
+                    transition: 'transform 0.2s',
+                    transform: expandedDates.has(date) ? 'rotate(90deg)' : 'rotate(0deg)'
+                  }}>
+                    ▶
+                  </span>
+                  <span style={{ fontSize: '15px', fontWeight: '600', color: '#1f2937' }}>
+                    {date}
+                  </span>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: '#6b7280',
+                    background: '#e5e7eb',
+                    padding: '2px 8px',
+                    borderRadius: '10px'
+                  }}>
+                    {items.length} 条
+                  </span>
+                </div>
+                
+                {/* 右侧：选择该日期按钮 */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleDateGroup(items);
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    background: 'white',
+                    color: '#6b7280',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                  }}
+                >
+                  {items.every(item => item.id && selectedIds.has(item.id)) ? '✓ 已全选' : '选择该日期'}
+                </button>
+              </div>
+
+              {/* 该日期的所有记录（只有展开时才显示） */}
+              {expandedDates.has(date) && (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#fafafa', borderBottom: '1px solid #e5e7eb' }}>
+                    <th style={{ ...thStyle, width: '40px' }}></th>
+                    <th style={thStyle}>URL</th>
+                    <th style={thStyle}>提交内容</th>
+                    <th style={thStyle}>嵌入链接</th>
+                    <th style={thStyle}>类型</th>
+                    <th style={thStyle}>提交时间</th>
+                    <th style={thStyle}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((link) => (
+                    <tr key={link.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={link.id ? selectedIds.has(link.id) : false}
+                          onChange={() => link.id && toggleSelect(link.id)}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            cursor: 'pointer',
+                            accentColor: '#3b82f6'
+                          }}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <a
+                          href={link.backlink_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: '#2563eb',
+                            textDecoration: 'none',
+                            fontSize: '13px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            maxWidth: '350px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {link.backlink_url}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                          </svg>
+                        </a>
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={{ 
+                          fontSize: '13px', 
+                          color: '#374151',
+                          maxWidth: '250px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {link.content || '-'}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                          {link.embedded_link || '-'}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={{
+                          padding: '4px 10px',
+                          background: link.mode === 'comment' ? '#dbeafe' : '#fef3c7',
+                          color: link.mode === 'comment' ? '#1e40af' : '#92400e',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500'
+                        }}>
+                          {link.mode === 'comment' ? '评论' : '导航站'}
+                        </span>
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                          {link.submitted_at ? new Date(link.submitted_at).toLocaleString('zh-CN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          }) : '-'}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => link.id && onDelete(link.id)}
+                          style={{
+                            padding: '6px 12px',
+                            background: 'transparent',
+                            border: '1px solid #fca5a5',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            color: '#dc2626',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -673,17 +953,61 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
       <div style={{
         background: 'white',
         borderRadius: '16px',
-        padding: '32px',
+        padding: '0',
         width: '600px',
         maxHeight: '80vh',
         overflowY: 'auto',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
       }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '24px', color: '#1f2937' }}>
-          {site.id ? '编辑推广网站' : '添加推广网站'}
-        </h2>
+        {/* 标题栏 */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '20px 28px',
+          borderBottom: '1px solid #e5e7eb',
+          position: 'sticky',
+          top: 0,
+          background: 'white',
+          borderRadius: '16px 16px 0 0',
+          zIndex: 1
+        }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+            {site.id ? '编辑推广网站' : '添加推广网站'}
+          </h2>
+          <button
+            onClick={onCancel}
+            style={{
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '20px',
+              color: '#9ca3af',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#f3f4f6';
+              e.currentTarget.style.color = '#1f2937';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#9ca3af';
+            }}
+          >
+            ✕
+          </button>
+        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* 表单内容 */}
+        <div style={{ padding: '28px' }}>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <FormField
             label="项目名称"
             required
@@ -743,8 +1067,35 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
             placeholder="张三"
           />
         </div>
+        </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+        {/* 底部按钮区 */}
+        <div style={{
+          padding: '16px 28px',
+          borderTop: '1px solid #e5e7eb',
+          display: 'flex',
+          gap: '12px',
+          background: '#fafafa',
+          borderRadius: '0 0 16px 16px',
+          position: 'sticky',
+          bottom: 0
+        }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1,
+              padding: '12px',
+              background: 'white',
+              color: '#6b7280',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
+            取消
+          </button>
           <button
             onClick={onSave}
             disabled={!canSave}
@@ -757,26 +1108,10 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
               borderRadius: '8px',
               fontSize: '14px',
               fontWeight: '500',
-              cursor: !canSave ? 'not-allowed' : 'pointer'
+              cursor: !canSave ? 'default' : 'pointer'
             }}
           >
             保存
-          </button>
-          <button
-            onClick={onCancel}
-            style={{
-              flex: 1,
-              padding: '12px',
-              background: '#f3f4f6',
-              color: '#6b7280',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer'
-            }}
-          >
-            取消
           </button>
         </div>
       </div>
@@ -805,19 +1140,31 @@ function FormField({ label, required, type, value, onChange, placeholder, multil
     }
   })();
 
+  const inputBaseStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '11px 14px',
+    border: `1.5px solid ${isUrlField && value && !isValidUrl ? '#ef4444' : '#e5e7eb'}`,
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontFamily: 'inherit',
+    transition: 'all 0.2s',
+    outline: 'none',
+    background: '#fafafa'
+  };
+
   return (
-    <div>
+    <div style={{ marginBottom: '4px' }}>
       <label style={{
         display: 'block',
         fontSize: '13px',
-        fontWeight: '500',
-        color: '#374151',
-        marginBottom: '6px'
+        fontWeight: '600',
+        color: '#1f2937',
+        marginBottom: '8px'
       }}>
         {label}
         {required && <span style={{ color: '#ef4444' }}> *</span>}
         {isUrlField && value && !isValidUrl && (
-          <span style={{ color: '#ef4444', fontSize: '11px', marginLeft: '8px' }}>
+          <span style={{ color: '#ef4444', fontSize: '12px', marginLeft: '8px', fontWeight: '400' }}>
             ⚠️ 请输入完整 URL（例如：https://example.com）
           </span>
         )}
@@ -827,15 +1174,19 @@ function FormField({ label, required, type, value, onChange, placeholder, multil
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          rows={3}
+          rows={4}
           style={{
-            width: '100%',
-            padding: '10px 12px',
-            border: `1px solid ${isUrlField && value && !isValidUrl ? '#ef4444' : '#d1d5db'}`,
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontFamily: 'inherit',
-            resize: 'vertical'
+            ...inputBaseStyle,
+            resize: 'vertical',
+            minHeight: '100px'
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#3b82f6';
+            e.target.style.background = 'white';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = isUrlField && value && !isValidUrl ? '#ef4444' : '#e5e7eb';
+            e.target.style.background = '#fafafa';
           }}
         />
       ) : (
@@ -844,12 +1195,14 @@ function FormField({ label, required, type, value, onChange, placeholder, multil
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            border: `1px solid ${isUrlField && value && !isValidUrl ? '#ef4444' : '#d1d5db'}`,
-            borderRadius: '8px',
-            fontSize: '14px'
+          style={inputBaseStyle}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#3b82f6';
+            e.target.style.background = 'white';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = isUrlField && value && !isValidUrl ? '#ef4444' : '#e5e7eb';
+            e.target.style.background = '#fafafa';
           }}
         />
       )}
