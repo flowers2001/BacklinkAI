@@ -19,19 +19,9 @@ function copyManifestPlugin() {
       const manifestPath = resolve(__dirname, 'public/manifest.json');
       const manifestContent = JSON.parse(readFileSync(manifestPath, 'utf-8'));
       
-      // 从环境变量注入 Google Client ID
-      const env = loadEnv('production', process.cwd(), '');
-      const googleClientId = env.VITE_GOOGLE_CLIENT_ID;
-      
-      if (googleClientId) {
-        manifestContent.oauth2 = {
-          client_id: googleClientId,
-          scopes: ['openid', 'email', 'profile']
-        };
-        console.log('✓ 已注入 Google OAuth2 Client ID');
-      } else {
-        console.warn('⚠️  未检测到 VITE_GOOGLE_CLIENT_ID，跳过 OAuth2 配置');
-      }
+      // 移除 oauth2 配置（改用 launchWebAuthFlow，不需要在 manifest 中声明）
+      delete manifestContent.oauth2;
+      console.log('✓ 使用 launchWebAuthFlow 认证方式（不需要 manifest.oauth2）');
       
       // 写入 manifest.json
       writeFileSync(

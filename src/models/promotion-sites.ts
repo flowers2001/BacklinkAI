@@ -72,13 +72,14 @@ export async function createPromotionSite(site: PromotionSite): Promise<Promotio
 /**
  * 更新推广网站
  */
-export async function updatePromotionSite(id: string, updates: Partial<PromotionSite>): Promise<PromotionSite> {
+export async function updatePromotionSite(id: string, userId: string, updates: Partial<PromotionSite>): Promise<PromotionSite> {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase
     .from('promotion_sites')
     .update(updates)
     .eq('id', id)
+    .eq('user_id', userId)
     .select()
     .single();
   
@@ -93,13 +94,14 @@ export async function updatePromotionSite(id: string, updates: Partial<Promotion
 /**
  * 删除推广网站
  */
-export async function deletePromotionSite(id: string): Promise<void> {
+export async function deletePromotionSite(id: string, userId: string): Promise<void> {
   const supabase = getSupabaseClient();
   
   const { error } = await supabase
     .from('promotion_sites')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', userId);
   
   if (error) {
     console.error('❌ 删除推广网站失败:', error);
@@ -119,11 +121,12 @@ export async function setActiveSite(userId: string, siteId: string): Promise<voi
     .update({ is_active: false })
     .eq('user_id', userId);
   
-  // 2. 激活指定网站
+  // 2. 激活指定网站（必须是该用户的网站）
   const { error } = await supabase
     .from('promotion_sites')
     .update({ is_active: true })
-    .eq('id', siteId);
+    .eq('id', siteId)
+    .eq('user_id', userId);
   
   if (error) {
     console.error('❌ 设置激活网站失败:', error);

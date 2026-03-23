@@ -6,10 +6,10 @@
 -- 1. 推广网站表（链接管理）
 CREATE TABLE IF NOT EXISTS promotion_sites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,  -- 关联到 auth.users
+    user_id UUID NOT NULL,  -- Google OAuth 用户 ID（由 email 生成的稳定 UUID）
     
     -- 基本信息
-    name TEXT NOT NULL,  -- 物料/网站名称
+    name TEXT NOT NULL,  -- 项目名称（用于在插件中区分不同推广网站）
     url TEXT NOT NULL,  -- 推广网址
     brand_name TEXT,  -- 品牌名
     title TEXT,  -- 网站标题
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS promotion_sites (
 -- 2. 外链记录表（外链管理）
 CREATE TABLE IF NOT EXISTS backlinks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,  -- 关联到 auth.users
+    user_id UUID NOT NULL,  -- Google OAuth 用户 ID
     site_id UUID REFERENCES promotion_sites(id) ON DELETE CASCADE,  -- 关联推广网站
     
     -- 外链信息
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS backlinks (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 创建索引
+-- 创建索引（提升查询性能）
 CREATE INDEX IF NOT EXISTS idx_promotion_sites_user_id ON promotion_sites(user_id);
 CREATE INDEX IF NOT EXISTS idx_promotion_sites_is_active ON promotion_sites(is_active);
 CREATE INDEX IF NOT EXISTS idx_backlinks_user_id ON backlinks(user_id);
@@ -58,48 +58,6 @@ CREATE INDEX IF NOT EXISTS idx_backlinks_site_id ON backlinks(site_id);
 CREATE INDEX IF NOT EXISTS idx_backlinks_domain ON backlinks(domain);
 CREATE INDEX IF NOT EXISTS idx_backlinks_submitted_at ON backlinks(submitted_at DESC);
 
--- ========================================
--- Row Level Security (RLS) 策略
--- 确保用户只能访问自己的数据
--- ========================================
-
--- 启用 RLS
-ALTER TABLE promotion_sites ENABLE ROW LEVEL SECURITY;
-ALTER TABLE backlinks ENABLE ROW LEVEL SECURITY;
-
--- promotion_sites 表的 RLS 策略
-CREATE POLICY "用户只能查看自己的推广网站"
-    ON promotion_sites FOR SELECT
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "用户只能插入自己的推广网站"
-    ON promotion_sites FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "用户只能更新自己的推广网站"
-    ON promotion_sites FOR UPDATE
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "用户只能删除自己的推广网站"
-    ON promotion_sites FOR DELETE
-    USING (auth.uid() = user_id);
-
--- backlinks 表的 RLS 策略
-CREATE POLICY "用户只能查看自己的外链记录"
-    ON backlinks FOR SELECT
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "用户只能插入自己的外链记录"
-    ON backlinks FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "用户只能更新自己的外链记录"
-    ON backlinks FOR UPDATE
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "用户只能删除自己的外链记录"
-    ON backlinks FOR DELETE
-    USING (auth.uid() = user_id);
 
 -- ========================================
 -- 更新时间触发器

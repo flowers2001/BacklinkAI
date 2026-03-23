@@ -1,6 +1,8 @@
-# AI 外链助手 (Backlink AI Assistant)
+# BacklinkAI
 
 一款专为 SEO 外链专员设计的 Chrome 浏览器插件，通过 **网页上下文感知 + AI 内容生成 + 自动表单填充** 的流程，大幅提升外链发布效率。
+
+> 🚀 **安装指南**：查看 [INSTALL.md](./INSTALL.md) 了解如何从源码构建并安装插件
 
 ## 功能特性
 
@@ -41,7 +43,7 @@ npm run build
 
 1. 打开 Chrome，访问 `chrome://extensions/`
 2. 开启右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」
+3. 点击「加载未打包的扩展程序」
 4. 选择项目的 `dist` 目录
 
 ## 项目结构
@@ -138,6 +140,35 @@ BacklinkAI/
    - 手动点击页面的提交按钮
 
 ## 更新日志
+
+### v1.0.3 (2026-03-23)
+
+- **修复图标问题**：将图标格式从 SVG 改为 PNG（Chrome 扩展不支持 SVG 图标）
+- 更新图标设计：橙色背景 + 白色链条图案
+- 插件名称统一为 "BacklinkAI"
+- **安全加固**：强化应用层权限检查
+  - `updatePromotionSite`：添加 `user_id` 验证，防止跨用户修改
+  - `deletePromotionSite`：添加 `user_id` 验证，防止跨用户删除
+  - `setActiveSite`：激活操作增加用户归属检查
+  - `deleteBacklink`：添加 `user_id` 验证
+  - `getBacklinksBySite`：添加 `user_id` 过滤
+- 创建 `DISTRIBUTION_GUIDE.md` 小团队分发指南
+
+### v1.0.2 (2026-03-23)
+
+- 更新插件品牌名称（AI 外链助手 → BacklinkAI）
+- 修复登出后下拉框不消失的问题
+- 修复添加推广网站后下拉框不自动刷新的问题
+- 增强 URL 输入验证（实时提示 + 保存按钮禁用）
+- 修复侧边栏页面布局对齐问题
+- 优化 "项目名称" 字段命名（原 "物料名称"）
+
+### v1.0.1 (2026-03-23)
+
+- 修复 Google OAuth 登录问题（切换为 launchWebAuthFlow）
+- 修复 Supabase UUID 类型不匹配问题（使用 email 生成稳定 UUID）
+- 禁用 RLS 以支持 Zeabur 部署环境
+- 修复无效 URL 导致页面空白的问题
 
 ### v1.0.0 (2024-03)
 

@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "AI 外链助手",
+  "name": "BacklinkAI",
   "name_en": "Backlink AI Assistant",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "AI 驱动的外链发布助手，自动读取网页内容，生成个性化评论/站点描述，智能填充表单",
   "icons": {
-    "16": "icons/icon16.svg",
-    "48": "icons/icon48.svg",
-    "128": "icons/icon128.svg"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "permissions": [
     "storage",
@@ -23,11 +23,11 @@
   ],
   "action": {
     "default_icon": {
-      "16": "icons/icon16.svg",
-      "48": "icons/icon48.svg",
-      "128": "icons/icon128.svg"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     },
-    "default_title": "AI 外链助手"
+    "default_title": "BacklinkAI"
   },
   "side_panel": {
     "default_path": "sidepanel.html"
@@ -47,13 +47,5 @@
       "run_at": "document_idle"
     }
   ],
-  "options_page": "options.html",
-  "oauth2": {
-    "client_id": "355294874695-gsrngfsb8jbhio2p8i15te727jr0i586.apps.googleusercontent.com",
-    "scopes": [
-      "openid",
-      "email",
-      "profile"
-    ]
-  }
+  "options_page": "options.html"
 }

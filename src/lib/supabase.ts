@@ -6,6 +6,35 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let supabaseClient: SupabaseClient | null = null;
 
+// ========================================
+// UUID 生成工具（基于 email 生成稳定的 UUID v5）
+// ========================================
+
+async function generateUUIDFromEmail(email: string): Promise<string> {
+  // UUID v5 命名空间（DNS）
+  const namespace = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+  
+  // 将 email 转为 Uint8Array
+  const encoder = new TextEncoder();
+  const data = encoder.encode(namespace + email);
+  
+  // 使用 SHA-1 哈希
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  
+  // 转为 UUID 格式
+  const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  // UUID v5 格式：xxxxxxxx-xxxx-5xxx-yxxx-xxxxxxxxxxxx
+  return [
+    hex.substring(0, 8),
+    hex.substring(8, 12),
+    '5' + hex.substring(13, 16),
+    ((parseInt(hex.substring(16, 18), 16) & 0x3f) | 0x80).toString(16) + hex.substring(18, 20),
+    hex.substring(20, 32)
+  ].join('-');
+}
+
 export function getSupabaseClient(): SupabaseClient {
   if (supabaseClient) {
     return supabaseClient;
@@ -40,55 +69,91 @@ export async function getCurrentUser() {
   }
 }
 
-// Google 登录（使用 Chrome Identity API，不依赖 Supabase Auth）
+// Google 登录（使用 launchWebAuthFlow 方式，兼容 Web 应用 Client ID）
 export async function signInWithGoogle() {
-  return new Promise<{ data: any; error: any }>((resolve) => {
-    chrome.identity.getAuthToken({ interactive: true }, async (token) => {
-      if (chrome.runtime.lastError || !token) {
-        resolve({
-          data: null,
-          error: { message: chrome.runtime.lastError?.message || '登录取消' }
-        });
-        return;
-      }
+  try {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    
+    if (!clientId) {
+      return {
+        data: null,
+        error: { message: '请在 .env 中配置 VITE_GOOGLE_CLIENT_ID' }
+      };
+    }
 
-      try {
-        // 使用 token 获取用户信息
-        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+    // 获取插件 ID（从 chrome.runtime.id 获取）
+    const redirectURL = chrome.identity.getRedirectURL();
+    
+    // 构建 OAuth2 授权 URL
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', clientId);
+    authUrl.searchParams.set('response_type', 'token');
+    authUrl.searchParams.set('redirect_uri', redirectURL);
+    authUrl.searchParams.set('scope', 'openid email profile');
 
-        if (!response.ok) {
-          throw new Error('获取用户信息失败');
-        }
-
-        const userInfo = await response.json();
-        
-        // 构造用户对象（不依赖 Supabase Auth）
-        const user = {
-          id: userInfo.id,
-          email: userInfo.email,
-          user_metadata: {
-            name: userInfo.name,
-            avatar_url: userInfo.picture,
+    // 启动 Web 认证流程
+    const responseUrl = await new Promise<string>((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(
+        {
+          url: authUrl.toString(),
+          interactive: true,
+        },
+        (callbackUrl) => {
+          if (chrome.runtime.lastError || !callbackUrl) {
+            reject(new Error(chrome.runtime.lastError?.message || '登录取消'));
+            return;
           }
-        };
-
-        // 保存到本地存储
-        await chrome.storage.local.set({ 
-          'supabase_user': user,
-          'google_token': token 
-        });
-
-        resolve({ data: { user }, error: null });
-      } catch (error) {
-        resolve({
-          data: null,
-          error: { message: error instanceof Error ? error.message : '登录失败' }
-        });
-      }
+          resolve(callbackUrl);
+        }
+      );
     });
-  });
+
+    // 从回调 URL 提取 access_token
+    const params = new URL(responseUrl).hash.slice(1);
+    const urlParams = new URLSearchParams(params);
+    const token = urlParams.get('access_token');
+
+    if (!token) {
+      throw new Error('未获取到访问令牌');
+    }
+
+    // 使用 token 获取用户信息
+    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      throw new Error('获取用户信息失败');
+    }
+
+    const userInfo = await response.json();
+    
+    // 从 email 生成稳定的 UUID（使用 UUID v5 命名空间）
+    const userId = await generateUUIDFromEmail(userInfo.email);
+    
+    // 构造用户对象
+    const user = {
+      id: userId,  // 使用生成的 UUID
+      email: userInfo.email,
+      user_metadata: {
+        name: userInfo.name,
+        avatar_url: userInfo.picture,
+      }
+    };
+
+    // 保存到本地存储
+    await chrome.storage.local.set({ 
+      'supabase_user': user,
+      'google_token': token 
+    });
+
+    return { data: { user }, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: { message: error instanceof Error ? error.message : '登录失败' }
+    };
+  }
 }
 
 // 登出

@@ -31,6 +31,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_key_here
 
 ### 第二步：创建数据表
 
+#### 2.1 创建表结构
+
 1. 在 Supabase Dashboard，打开 **SQL Editor**
 2. 复制 `database/schema.sql` 文件的全部内容
 3. 粘贴到 SQL Editor 并执行（点击 RUN）
@@ -38,7 +40,19 @@ VITE_SUPABASE_ANON_KEY=your_anon_key_here
 **这会创建**：
 - `promotion_sites` 表（推广网站）
 - `backlinks` 表（外链记录）
-- RLS 安全策略（确保用户只能访问自己的数据）
+
+#### 2.2 配置安全策略（Zeabur 环境必须执行！）
+
+**⚠️ 重要：如果你的 Zeabur Supabase 没有 Authentication 服务，必须禁用 RLS！**
+
+1. 继续在 **SQL Editor** 中
+2. 复制 `database/disable-rls.sql` 文件的全部内容
+3. 粘贴并执行（点击 RUN）
+
+**为什么要禁用 RLS？**
+- Zeabur 的 Supabase 没有 Auth 服务，`auth.uid()` 永远返回 null
+- 插件已在应用层通过 `user_id` 字段隔离数据
+- ANON_KEY 只能通过插件访问，外部无法直接调用
 
 ---
 

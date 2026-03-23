@@ -34,13 +34,14 @@ export async function getBacklinks(userId: string, limit?: number): Promise<Back
 /**
  * 获取指定推广网站的外链记录
  */
-export async function getBacklinksBySite(siteId: string): Promise<Backlink[]> {
+export async function getBacklinksBySite(siteId: string, userId: string): Promise<Backlink[]> {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase
     .from('backlinks')
     .select('*')
     .eq('site_id', siteId)
+    .eq('user_id', userId)
     .order('submitted_at', { ascending: false });
   
   if (error) {
@@ -74,13 +75,14 @@ export async function createBacklink(backlink: Backlink): Promise<Backlink> {
 /**
  * 删除外链记录
  */
-export async function deleteBacklink(id: string): Promise<void> {
+export async function deleteBacklink(id: string, userId: string): Promise<void> {
   const supabase = getSupabaseClient();
   
   const { error } = await supabase
     .from('backlinks')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', userId);
   
   if (error) {
     console.error('❌ 删除外链记录失败:', error);

@@ -38,6 +38,20 @@ function App() {
     loadUserAndSites();
   }, []);
 
+  // 监听窗口焦点变化，重新获得焦点时刷新数据
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('[Sidepanel] 窗口重新获得焦点，刷新数据...');
+      loadUserAndSites();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
   const loadUserAndSites = async () => {
     try {
       const currentUser = await getCurrentUser();
@@ -49,9 +63,18 @@ function App() {
         // 获取激活的网站
         const active = await getActiveSite(currentUser.id);
         setActiveSite(active);
+      } else {
+        // 未登录，清空数据
+        setUser(null);
+        setSites([]);
+        setActiveSite(null);
       }
     } catch (error) {
       console.error('❌ 加载用户数据失败:', error);
+      // 出错时也清空数据
+      setUser(null);
+      setSites([]);
+      setActiveSite(null);
     }
   };
 
@@ -179,6 +202,12 @@ function App() {
 
   // 一键生成（一次调用，同时得到原文和中文）
   const handleGenerate = useCallback(async () => {
+    // 检查是否登录
+    if (!user || !activeSite) {
+      alert('请先登录并添加推广网站\n\n点击右上角设置按钮 → 使用 Google 账号登录');
+      return;
+    }
+
     // 评论模式需要页面内容，导航站模式不需要
     if (mode === 'comment' && !pageContent) {
       alert('请先提取页面内容');
@@ -190,30 +219,20 @@ function App() {
     setChineseComment('');
 
     try {
-      // 优先使用 Supabase 中的激活网站，否则用本地配置
-      let projectInfo: any;
-      
-      if (activeSite) {
-        // 使用 Supabase 数据
-        projectInfo = {
-          targetUrl: activeSite.url,
-          keywords: activeSite.keywords || '',
-          brandName: activeSite.brand_name || '',
-          title: activeSite.title || '',
-          tagline: activeSite.tagline || '',
-          description: activeSite.description || '',
-          email: activeSite.email || '',
-          name: activeSite.author_name || '',
-        };
-      } else {
-        // 使用本地配置（兼容未登录场景）
-        const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-        if (!configResponse.success) throw new Error('无法获取配置');
-        projectInfo = configResponse.data.project;
-      }
+      // 使用 Supabase 中的激活网站
+      const projectInfo = {
+        targetUrl: activeSite.url,
+        keywords: activeSite.keywords || '',
+        brandName: activeSite.brand_name || '',
+        title: activeSite.title || '',
+        tagline: activeSite.tagline || '',
+        description: activeSite.description || '',
+        email: activeSite.email || '',
+        name: activeSite.author_name || '',
+      };
       
       if (!projectInfo.targetUrl) {
-        alert('请先在设置中配置推广网址');
+        alert('推广网站配置不完整，请在设置中检查');
         return;
       }
 
@@ -258,27 +277,26 @@ function App() {
 
   // 填充表单
   const handleFill = useCallback(async (useChineseVersion: boolean) => {
+    // 检查是否登录
+    if (!user || !activeSite) {
+      alert('请先登录并添加推广网站');
+      return;
+    }
+
     const contentToFill = useChineseVersion ? chineseComment : originalComment;
 
     setIsFilling(true);
 
     try {
-      // 优先使用 Supabase 中的激活网站，否则用本地配置
-      let projectInfo: any;
-      
-      if (activeSite) {
-        projectInfo = {
-          targetUrl: activeSite.url,
-          email: activeSite.email || '',
-          brandName: activeSite.brand_name || '',
-          name: activeSite.author_name || '',
-          title: activeSite.title || '',
-          tagline: activeSite.tagline || '',
-        };
-      } else {
-        const configResponse = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-        projectInfo = configResponse.data?.project || {};
-      }
+      // 使用 Supabase 中的激活网站
+      const projectInfo = {
+        targetUrl: activeSite.url,
+        email: activeSite.email || '',
+        brandName: activeSite.brand_name || '',
+        name: activeSite.author_name || '',
+        title: activeSite.title || '',
+        tagline: activeSite.tagline || '',
+      };
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('无法获取标签页');
@@ -306,7 +324,12 @@ function App() {
         // 自动保存外链记录到 Supabase
         if (user && activeSite && tab.url) {
           try {
-            const domain = new URL(tab.url).hostname;
+            let domain = '';
+            try {
+              domain = new URL(tab.url).hostname;
+            } catch {
+              domain = tab.url;
+            }
             await createBacklink({
               user_id: user.id,
               site_id: activeSite.id,
@@ -411,8 +434,8 @@ function App() {
       {/* 头部 */}
       <header className="header">
         <div className="header-left">
-          <img src="/icons/icon48.svg" alt="Logo" className="header-icon" />
-          <h1 className="header-title">AI 外链助手</h1>
+          <div style={{ fontSize: '18px' }}>🔗</div>
+          <h1 className="header-title">BacklinkAI</h1>
         </div>
         <div className="header-actions">
           <button className="header-btn" onClick={handleOpenSettings}>⚙️</button>
@@ -420,12 +443,46 @@ function App() {
       </header>
 
       <div className="main-content">
+        {/* 未登录提示 */}
+        {!user && (
+          <div style={{
+            padding: '16px',
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            borderLeft: '4px solid #f59e0b',
+            borderRadius: '8px',
+            marginBottom: '12px'
+          }}>
+            <div style={{ fontSize: '13px', color: '#92400e', fontWeight: '600', marginBottom: '4px' }}>
+              ⚠️ 请先登录
+            </div>
+            <div style={{ fontSize: '12px', color: '#78350f', marginBottom: '8px' }}>
+              生成评论和填充表单需要先登录并添加推广网站
+            </div>
+            <button
+              onClick={handleOpenSettings}
+              style={{
+                padding: '6px 12px',
+                background: '#f59e0b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              前往登录 →
+            </button>
+          </div>
+        )}
+
         {/* 推广项目选择器 */}
         {user && sites.length > 0 && (
           <div style={{
             padding: '12px 16px',
             background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-            borderBottom: '1px solid #bfdbfe',
+            borderLeft: '4px solid #3b82f6',
+            borderRadius: '8px',
             marginBottom: '12px'
           }}>
             <div style={{ fontSize: '11px', color: '#1e40af', marginBottom: '6px', fontWeight: '500' }}>
@@ -449,10 +506,49 @@ function App() {
             >
               {sites.map(site => (
                 <option key={site.id} value={site.id}>
-                  {site.is_active ? '● ' : ''}{site.name} ({new URL(site.url).hostname})
+                  {site.is_active ? '● ' : ''}{site.name} ({(() => {
+                    try {
+                      return new URL(site.url).hostname;
+                    } catch {
+                      return site.url;
+                    }
+                  })()})
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {/* 已登录但没有推广网站的提示 */}
+        {user && sites.length === 0 && (
+          <div style={{
+            padding: '16px',
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            borderLeft: '4px solid #f59e0b',
+            borderRadius: '8px',
+            marginBottom: '12px'
+          }}>
+            <div style={{ fontSize: '13px', color: '#92400e', fontWeight: '600', marginBottom: '4px' }}>
+              📝 还没有推广网站
+            </div>
+            <div style={{ fontSize: '12px', color: '#78350f', marginBottom: '8px' }}>
+              请先添加一个推广网站才能使用生成功能
+            </div>
+            <button
+              onClick={handleOpenSettings}
+              style={{
+                padding: '6px 12px',
+                background: '#f59e0b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              添加推广网站 →
+            </button>
           </div>
         )}
 
@@ -656,8 +752,9 @@ function App() {
               <button
                 className="btn btn-primary"
                 onClick={handleGenerate}
-                disabled={isLoading || !pageContent}
+                disabled={isLoading || !pageContent || !user || !activeSite}
                 style={{ flex: 1 }}
+                title={!user || !activeSite ? '请先登录并添加推广网站' : ''}
               >
                 {isGenerating ? (
                   <><div className="spinner" /> 生成中...</>
@@ -668,9 +765,9 @@ function App() {
               <button
                 className="btn btn-success"
                 onClick={() => handleFill(false)}
-                disabled={isFilling}
+                disabled={isFilling || !user || !activeSite}
                 style={{ flex: 1 }}
-                title="自动填充表单（使用原评论）"
+                title={!user || !activeSite ? '请先登录并添加推广网站' : '自动填充表单（使用原评论）'}
               >
                 {isFilling ? '填充中...' : '📝 自动填充'}
               </button>
@@ -769,8 +866,9 @@ function App() {
               <button
                 className="btn btn-primary"
                 onClick={handleGenerate}
-                disabled={isLoading}
+                disabled={isLoading || !user || !activeSite}
                 style={{ flex: 1 }}
+                title={!user || !activeSite ? '请先登录并添加推广网站' : ''}
               >
                 {isGenerating ? (
                   <><div className="spinner" /> 生成中...</>
@@ -781,9 +879,9 @@ function App() {
               <button
                 className="btn btn-success"
                 onClick={() => handleFill(false)}
-                disabled={isFilling}
+                disabled={isFilling || !user || !activeSite}
                 style={{ flex: 1 }}
-                title="自动填充表单（使用网站描述）"
+                title={!user || !activeSite ? '请先登录并添加推广网站' : '自动填充表单（使用网站描述）'}
               >
                 {isFilling ? '填充中...' : '📝 自动填充'}
               </button>

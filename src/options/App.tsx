@@ -84,10 +84,25 @@ function ManagerApp({ user }: { user: UserProfile }) {
   const handleSaveSite = async () => {
     if (!editingSite) return;
     
+    // 验证 URL 格式
+    if (editingSite.url) {
+      try {
+        const url = new URL(editingSite.url);
+        // 检查协议是否为 http 或 https
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          showToast('error', 'URL 必须以 http:// 或 https:// 开头');
+          return;
+        }
+      } catch {
+        showToast('error', '请输入有效的 URL 格式（例如：https://example.com）');
+        return;
+      }
+    }
+    
     try {
       if (editingSite.id) {
         // 更新
-        await updatePromotionSite(editingSite.id, editingSite);
+        await updatePromotionSite(editingSite.id, user.id, editingSite);
         showToast('success', '更新成功');
       } else {
         // 新建
@@ -109,7 +124,7 @@ function ManagerApp({ user }: { user: UserProfile }) {
     if (!confirm('确定要删除这个推广网站吗？')) return;
     
     try {
-      await deletePromotionSite(id);
+      await deletePromotionSite(id, user.id);
       showToast('success', '删除成功');
       loadData();
     } catch (error) {
@@ -131,7 +146,7 @@ function ManagerApp({ user }: { user: UserProfile }) {
     if (!confirm('确定要删除这条外链记录吗？')) return;
     
     try {
-      await deleteBacklink(id);
+      await deleteBacklink(id, user.id);
       showToast('success', '删除成功');
       loadData();
     } catch (error) {
@@ -146,7 +161,7 @@ function ManagerApp({ user }: { user: UserProfile }) {
         width: '200px',
         background: 'white',
         borderRight: '1px solid #e5e7eb',
-        padding: '80px 0 24px 0',
+        padding: '24px 0',
         display: 'flex',
         flexDirection: 'column',
         gap: '4px'
@@ -160,7 +175,7 @@ function ManagerApp({ user }: { user: UserProfile }) {
             WebkitTextFillColor: 'transparent',
             marginBottom: '4px'
           }}>
-            AutoCommentAI
+            BacklinkAI
           </div>
           <div style={{ fontSize: '11px', color: '#9ca3af' }}>
             外链数据管理
@@ -353,8 +368,8 @@ function SitesTable({ sites, onAdd, onEdit, onDelete, onSetActive }: {
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
                 <th style={thStyle}>状态</th>
-                <th style={thStyle}>物料</th>
-                <th style={thStyle}>URL</th>
+                <th style={thStyle}>项目名称</th>
+                <th style={thStyle}>推广网址</th>
                 <th style={thStyle}>联系方式</th>
                 <th style={thStyle}>描述</th>
                 <th style={thStyle}>操作</th>
@@ -417,7 +432,13 @@ function SitesTable({ sites, onAdd, onEdit, onDelete, onSetActive }: {
                         gap: '4px'
                       }}
                     >
-                      {new URL(site.url).hostname}
+                      {(() => {
+                        try {
+                          return new URL(site.url).hostname;
+                        } catch {
+                          return site.url || '-';
+                        }
+                      })()}
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                         <polyline points="15 3 21 3 21 9"></polyline>
@@ -623,6 +644,19 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
     onChange({ ...site, [field]: value });
   };
 
+  // 验证 URL 格式
+  const isUrlValid = (() => {
+    if (!site.url) return false;
+    try {
+      const url = new URL(site.url);
+      return ['http:', 'https:'].includes(url.protocol);
+    } catch {
+      return false;
+    }
+  })();
+
+  const canSave = site.name && site.url && isUrlValid;
+
   return (
     <div style={{
       position: 'fixed',
@@ -651,15 +685,16 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <FormField
-            label="物料名称"
+            label="项目名称"
             required
             value={site.name}
             onChange={(v) => handleChange('name', v)}
-            placeholder="例如：我的独立站"
+            placeholder="例如：我的独立站、产品A官网"
           />
           <FormField
             label="推广网址"
             required
+            type="url"
             value={site.url}
             onChange={(v) => handleChange('url', v)}
             placeholder="https://your-website.com"
@@ -712,17 +747,17 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
         <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
           <button
             onClick={onSave}
-            disabled={!site.name || !site.url}
+            disabled={!canSave}
             style={{
               flex: 1,
               padding: '12px',
-              background: !site.name || !site.url ? '#d1d5db' : '#2563eb',
+              background: !canSave ? '#d1d5db' : '#2563eb',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
               fontSize: '14px',
               fontWeight: '500',
-              cursor: !site.name || !site.url ? 'not-allowed' : 'pointer'
+              cursor: !canSave ? 'not-allowed' : 'pointer'
             }}
           >
             保存
@@ -749,14 +784,27 @@ function SiteEditModal({ site, onSave, onCancel, onChange }: {
   );
 }
 
-function FormField({ label, required, value, onChange, placeholder, multiline }: {
+function FormField({ label, required, type, value, onChange, placeholder, multiline }: {
   label: string;
   required?: boolean;
+  type?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   multiline?: boolean;
 }) {
+  // URL 格式验证
+  const isUrlField = type === 'url';
+  const isValidUrl = (() => {
+    if (!isUrlField || !value) return true;
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol);
+    } catch {
+      return false;
+    }
+  })();
+
   return (
     <div>
       <label style={{
@@ -768,6 +816,11 @@ function FormField({ label, required, value, onChange, placeholder, multiline }:
       }}>
         {label}
         {required && <span style={{ color: '#ef4444' }}> *</span>}
+        {isUrlField && value && !isValidUrl && (
+          <span style={{ color: '#ef4444', fontSize: '11px', marginLeft: '8px' }}>
+            ⚠️ 请输入完整 URL（例如：https://example.com）
+          </span>
+        )}
       </label>
       {multiline ? (
         <textarea
@@ -778,7 +831,7 @@ function FormField({ label, required, value, onChange, placeholder, multiline }:
           style={{
             width: '100%',
             padding: '10px 12px',
-            border: '1px solid #d1d5db',
+            border: `1px solid ${isUrlField && value && !isValidUrl ? '#ef4444' : '#d1d5db'}`,
             borderRadius: '8px',
             fontSize: '14px',
             fontFamily: 'inherit',
@@ -787,14 +840,14 @@ function FormField({ label, required, value, onChange, placeholder, multiline }:
         />
       ) : (
         <input
-          type="text"
+          type={type || 'text'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           style={{
             width: '100%',
             padding: '10px 12px',
-            border: '1px solid #d1d5db',
+            border: `1px solid ${isUrlField && value && !isValidUrl ? '#ef4444' : '#d1d5db'}`,
             borderRadius: '8px',
             fontSize: '14px'
           }}
